@@ -137,19 +137,6 @@ class Maze {
 		}
 	}
 
-	openPath(cell, dir){
-		// Remove this wall.
-		this.setWall(cell, dir);
-		// Reverse the direction
-		const reverse = opposite[dir];
-		// Get the next cell.
-		const nextCell = getNextCell(cell, dir);
-		// Remove the next cell's opposite wall.
-		this.setWall(nextCell, reverse);
-		// Return the two cells.
-		return [cell, nextCell];
-	}
-
 	getDistance(c1, c2){
 		var [f1, r1, c1] = c1.loc;
 		var [f2, r2, c2] = c2.loc;
@@ -395,20 +382,22 @@ class Maze {
 		const solution = this.pathfind(this.entranceList[entranceStart].cell, this.entranceList[entranceEnd].cell);
 		if (!solution) {
 			//alert(`Maze cannot be traversed from entrance ${entranceStart+1} to ${entranceEnd+1}`);
-			// So let's fix the maze. At this point, there is a distance 
-			// marker for every cell that CAN be reached from entranceStart.
+			// So let's fix the maze. pathfind measures backwards from the end, so at this point
+			// there is a distance marker for every cell that can still REACH entranceEnd.
 			// Reset the tag on all cells.
 			this.cellList.map(x=>{x.work.tag=null;});
 			// Tag these cells in work so we can find cells that are connected to the other entrance.
-			const starters = this.cellList.filter(x=>x.work.dist!==null);
-			starters.forEach(x=>{x.work.tag=entranceStart;});
-			// Now reverse walk the path from the end to the start. 
-			// This will mark the cells available tot the end.
+			const enders = this.cellList.filter(x=>x.work.dist!==null);
+			enders.forEach(x=>{x.work.tag=entranceEnd;});
+			// Now walk outward from the start (outward = true).
+			// This will mark the cells the player can get to from the start.
 			const moonwalk = this.pathfind(this.entranceList[entranceEnd].cell, this.entranceList[entranceStart].cell, true);
 			// Now all cells with a distance and no tag get tagged for this entrance.
-			const enders = this.cellList.filter(x=>x.work.dist!==null && x.work.tag == null);
-			enders.forEach(x=>{x.work.tag=entranceEnd;});
+			const starters = this.cellList.filter(x=>x.work.dist!==null && x.work.tag == null);
+			starters.forEach(x=>{x.work.tag=entranceStart;});
 			// Generate a list of all start tagged cells that are adjacent to end tagged cells.
+			// Opening a wall from a start cell into an end cell joins the two: the player
+			// reaches the start cell, steps through, and can carry on to the end.
 			const adjacent = starters.map(c=>{return {cell: c, dir:['N','S','E','W','U','D'].filter(d=>{const n = this.getNextCell(c, d); return n && n.work.tag == entranceEnd;})};}).filter(x=>x.dir.length > 0);
 			// Pick one.
 			const opener = adjacent[this.generateInt(adjacent.length)];

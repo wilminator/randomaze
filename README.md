@@ -65,7 +65,8 @@ maze.generateDoors();
 mazehtml.playGame();
 ```
 
-Load enough key items for the maze's door count (`params.doorTypes`). The page needs
+Load at least `params.doorTypes` key items: a maze never hides more keys than that.
+With fewer, the UI reuses items, so two different doors can look alike. The page needs
 `ui/css/maze.css` and one inline `<style>` element, which the UI adds its rules to.
 
 ## Images
@@ -80,6 +81,9 @@ npm ci
 npm test                 # unit tests
 npm run check            # build 200 mazes of each type and look for problems
 npm run check -- 2000 1  # more mazes, starting at seed 1
+
+npx playwright install chromium   # once, for the browser tests
+npm run test:ui          # play the demo in headless Chromium
 ```
 
 ## Releases

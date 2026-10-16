@@ -1,4 +1,4 @@
-# Runs the generator tests on every pull request and every push to main.
+# Runs the generator and browser tests on every pull request and every push to main.
 name: Tests
 
 on:
@@ -17,3 +17,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  # Opens the demo in headless Chromium and checks the UI.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui

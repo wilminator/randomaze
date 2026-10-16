@@ -79,3 +79,17 @@ test('every locked door has exactly one key', () => {
 		}
 	}
 });
+
+/*
+The UI needs one key item per key. The README tells games to load params.doorTypes key items,
+which is only enough if a maze never hides more keys than that.
+*/
+test('a maze never has more keys than doorTypes', () => {
+	for (let type = 0; type < 4; type++) {
+		for (let seed = 1; seed <= 25; seed++) {
+			const { params, maze } = generate(type, seed);
+			const { keys } = doorsAndKeys(maze);
+			assert.ok(keys.length <= params.doorTypes, `type ${type} seed ${seed}: ${keys.length} keys, doorTypes ${params.doorTypes}`);
+		}
+	}
+});
