@@ -108,3 +108,32 @@ test('the game can clear itself away when no menu callback was given', async () 
 	assert.strictEqual(await page.locator('#maze').count(), 0, 'the game UI is gone');
 	await page.close();
 });
+
+// A tenth of a second of silence as a WAV file, so a test can load real sounds.
+function silentWav() {
+	const samples = 800;
+	const buffer = Buffer.alloc(44 + samples);
+	buffer.write('RIFF', 0); buffer.writeUInt32LE(36 + samples, 4); buffer.write('WAVE', 8);
+	buffer.write('fmt ', 12); buffer.writeUInt32LE(16, 16); buffer.writeUInt16LE(1, 20); buffer.writeUInt16LE(1, 22);
+	buffer.writeUInt32LE(8000, 24); buffer.writeUInt32LE(8000, 28); buffer.writeUInt16LE(1, 32); buffer.writeUInt16LE(8, 34);
+	buffer.write('data', 36); buffer.writeUInt32LE(samples, 40); buffer.fill(128, 44);
+	return `data:audio/wav;base64,${buffer.toString('base64')}`;
+}
+
+/*
+Browsers refuse to start sound before the player has clicked or pressed a key. play() reports
+that by rejecting its promise, which try/catch cannot see, so it showed up as an uncaught error.
+*/
+test('music that the browser will not autoplay does not raise an error', async () => {
+	const script = `setAudioState(true);\n${gameScript(1, 5, 11)}`
+		.replace("mazehtml.generateGameUi", `mazehtml.loadClip({url: '${silentWav()}', tags: ['maze']});\n\t\tmazehtml.generateGameUi`);
+	const { page, errors } = await openDemo('', script);
+	await page.waitForTimeout(500);
+	assert.deepStrictEqual(errors, []);
+	assert.strictEqual(await page.evaluate(() => currentmusic.paused), true, 'the browser held the music back');
+	// The first key press counts as the player interacting, so the music can start now.
+	await page.keyboard.press('Shift');
+	await page.waitForFunction(() => !currentmusic.paused);
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});

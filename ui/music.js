@@ -8,6 +8,31 @@ function audioSettingOr(value, fallback) {
     return value !== undefined && value !== null ? value : fallback;
 }
 
+/*
+Start an Audio element playing. play() reports failure by rejecting a promise, which
+try/catch cannot see, so failures used to surface as "Uncaught (in promise)" errors.
+The usual failure is the browser's autoplay rule: no sound until the player has clicked
+or pressed a key. Then try once more on the first click or key press, if still wanted.
+*/
+function startAudio(audio, retry = true) {
+    const result = audio.play();
+    if (result) {
+        result.catch(error => {
+            if (retry && error.name === 'NotAllowedError') {
+                const resume = () => {
+                    document.removeEventListener('keydown', resume, true);
+                    document.removeEventListener('pointerdown', resume, true);
+                    if (audio === currentmusic && playaudio && audio.paused) {
+                        startAudio(audio, false);
+                    }
+                };
+                document.addEventListener('keydown', resume, true);
+                document.addEventListener('pointerdown', resume, true);
+            }
+        });
+    }
+}
+
 function registerAudioSettings(callback){
     musicSettingsCallback = callback;
 }
@@ -33,12 +58,7 @@ function setMusic(music, loop = true, restart = false){
             if (restart) {
                 currentmusic.currentTime = 0;
             }
-            try {
-                currentmusic.play();
-            }
-            catch {
-                // Do nothing. The audio wasn't able to play.
-            }
+            startAudio(currentmusic);
         }
     }
     return music;
@@ -46,7 +66,7 @@ function setMusic(music, loop = true, restart = false){
 
 function playMusic() {
     if (currentmusic) {
-        currentmusic.play();
+        startAudio(currentmusic);
     }
 }
 
@@ -80,7 +100,7 @@ function setVolume(){
             if (currentmusic.paused) {
                 currentmusic.loop = true;
                 currentmusic.currentTime = 0;
-                currentmusic.play();
+                startAudio(currentmusic);
             }
             currentmusic.volume = playvol/100;
         }
@@ -110,6 +130,7 @@ function playSound(clip){
         const audio = (typeof clip === 'string') ? loadSound(clip) : clip;
         audio.volume = playvol / 100;
         audio.loop = false;
-        audio.play();
+        // A sound effect is only worth playing now, so don't retry it later.
+        startAudio(audio, false);
     }
 }
