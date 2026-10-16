@@ -268,17 +268,18 @@ class MazeHtml{
 				//cell.map.css('color', color);
 			}
 			else{
-				// Remove a stair from the map.
-				if (cell.map.attr("class") == dirClass[dir]) {
-					cell.map.removeClass(dirClass[dir]);
-				}
+				// Remove a stair from the map. This used to compare the whole class attribute,
+				// which never matched because the cell also has the mapCell class.
+				// Remove only the icon class: 'fas' may belong to another icon in this cell.
+				cell.map.removeClass(dirClass[dir].split(' ').pop());
 			}
 		}
 	}
 	
 	// Debug helpers for the generator, so mazegen.js does not need this file's globals.
 	debugKeyColor(key) {
-		return doors[key].key;
+		// doors[0] and doors[1] are walls and plain doors; key colours start at 2 and repeat.
+		return doors[2 + (key - 2) % (doors.length - 2)].key;
 	}
 
 	renderMapDebugKey(cell, key, css = {}) {
@@ -312,7 +313,7 @@ class MazeHtml{
 				}
 			}
 			if (this._debug && 'key' in cell.data.item) {
-				cell.map.addClass(keyClass).css('color',doors[cell.data.item.key].key);					
+				cell.map.addClass(keyClass).css('color',this.debugKeyColor(cell.data.item.key));					
 			}
 		}
 		else {
@@ -522,7 +523,7 @@ class MazeHtml{
 	<div id="help" class="fa fa-cog icon"></div>
 	<div id="gamevolup" class="icon">&#x1F50A</div>
 	<div id="gamemute" class="icon">&#x1F4E2</div>
-	<div id="gamevoldn" class="icon"">&#x1F509</div>  
+	<div id="gamevoldn" class="icon">&#x1F509</div>  
     <div id="moves">Moves: 0</div>
     <div><br />Inventory
 	<div id="inventory" class="d-flex flex-wrap overflow-auto"></div>	
@@ -607,6 +608,9 @@ PgDn Descend<br />
 			.sort((a, b) => a.sort - b.sort)
 			.map(({ value }) => value);
 		this.keyList = {};
+		if (keyCells.length > shuffledKeys.length) {
+			console.log(`The maze has ${keyCells.length} keys but only ${shuffledKeys.length} key items were loaded. Reusing items.`);
+		}
 		for (var i = 0, j = 0; i < keyCells.length; ++i) {
 			// i = lock number
 			// j = key item
@@ -614,8 +618,9 @@ PgDn Descend<br />
 
 			// Get the lock number
 			const key = keyCells[i].data.item.key;
-			// Create a construct for the needed key
-			const keyObj = key == 1 ? {} : shuffledKeys[j++];
+			// Create a construct for the needed key.
+			// Copy the item: open is set per door below, and two doors may share one item.
+			const keyObj = key == 1 ? {} : Object.assign({}, shuffledKeys[j++ % shuffledKeys.length]);
 			// Store this key data
 			this.keyList[key] = keyObj;
 			// Pick the door type for this key.
@@ -935,12 +940,6 @@ PgDn Descend<br />
 					// Update the visit flag for this cell.
 					nextCell = maze.grid[pZ][pY][pX];
 					break;
-				case 'down':
-					// Update the visit flag for this cell.
-					nextCell = maze.grid[pZ][pY][pX];
-					// No more animations.
-					animationState = false;
-					break;
 				case 'door':
 					// Update the door for this cell.
 					nextCell = maze.grid[pZ][pY][pX];
@@ -1037,6 +1036,11 @@ PgDn Descend<br />
 			eventQueue.push('animationStop');
 			event.stopImmediatePropagation();	
 		});
+		// A page that loses focus (Alt-Tab, clicking another window) never hears the keyup,
+		// so a held key would stay pressed and keep the player moving. Let go of everything.
+		$(window).on('blur.game', function() {
+			Object.keys(keyPressed).forEach(key => delete keyPressed[key]);
+		});
 
 		var [mousedown, mouseup] = navigator.maxTouchPoints > 0 ? ['touchstart','touchend touchmove'] : ['mousedown','mouseup mouseout'] ;
 
@@ -1115,6 +1119,7 @@ PgDn Descend<br />
 
 		// Remove triggers on body tag (or else...)
 		$('body').off('keydown.game').off('keyup.game').off('transitionend.game');
+		$(window).off('blur.game');
 
 		// Clean up all dynamic CSS (or else...)
 		for (const [name, rule] of Object.entries(this.cssRules)) {
@@ -1126,6 +1131,9 @@ PgDn Descend<br />
 			}
 		}
 
-		this.helpFxn(state);
+		// The menu callback is optional (see generateGameUi).
+		if (this.helpFxn) {
+			this.helpFxn(state);
+		}
 	}
 }

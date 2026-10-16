@@ -31,7 +31,7 @@ function loopTitleColor() {
 			break;
 		case 1:
 			for (var i = titleState.colorIndex - 1, j = 10; i >= 0 && j >= 0; --i, --j) {
-				var color = (i >= titleColors.length * 2) ? 'white' :  titleColors[i/2];
+				var color = (i >= titleColors.length * 2) ? 'white' :  titleColors[Math.floor(i / 2)];
 				$("#T"+(j)).css({"color": color}) ;				
 			}
 			if (titleState.colorIndex >= (11 + titleColors.length * 2)) {
@@ -40,7 +40,7 @@ function loopTitleColor() {
 			break;
 		case 2:
 			for (var i = titleState.colorIndex - 1, j = 0; i >= 0 && j <= 10; --i, ++j) {
-				var color = (i >= titleColors.length * 2) ? 'white' :  titleColors[i/2];
+				var color = (i >= titleColors.length * 2) ? 'white' :  titleColors[Math.floor(i / 2)];
 				$("#T"+(j)).css({"color": color}) ;				
 			}
 			if (titleState.colorIndex >= (11 + titleColors.length * 2)) {

@@ -49,9 +49,13 @@ function startDemo() {
 		css: 'background: repeating-linear-gradient(90deg, #4a6b3a 0 12vmin, #3a5530 12vmin 13vmin);'});
 	mazehtml.loadDoor({tags: ['up', 'down', 'left', 'right', 'split'],
 		css: 'background: linear-gradient(#8a5a2b, #5c3a1a); border: 1vmin solid #2b1a0a;'});
-	for (const [name, color] of KEY_COLORS) {
+	// A maze can have up to params.doorTypes keys, so load at least that many key items.
+	// Past the named colours, spread extra colours around the colour wheel.
+	for (let i = 0; i < Math.max(KEY_COLORS.length, params.doorTypes); ++i) {
+		const [name, color] = KEY_COLORS[i] || [`Key ${i + 1}`, `hsl(${(i * 137) % 360}, 60%, 40%)`];
+		const initials = KEY_COLORS[i] ? `${name[0]}K` : `K${i + 1}`;
 		const img = keyImage(color);
-		mazehtml.loadItem({name: `${name} Key`, initials: `${name[0]}K`, src: img, invsrc: img,
+		mazehtml.loadItem({name: i < KEY_COLORS.length ? `${name} Key` : name, initials, src: img, invsrc: img,
 			css: 'background-repeat: no-repeat; background-position: center; background-size: 40%;',
 			tags: ['key'], doorcolor: color});
 	}
