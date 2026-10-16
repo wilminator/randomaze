@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Randomaze demo</title>
+	<!-- Font Awesome Free draws the map's ladder, key and arrow icons. -->
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+	<link rel="stylesheet" href="../ui/css/maze.css">
+	<!--
+	MazeHtml adds its own CSS rules to the last stylesheet on the page that has no
+	href, so the page needs an inline <style> block, even a small one like this.
+	-->
+	<style>
+		body {background-color: black; color: white; margin: 0; user-select: none;}
+		#gamewindow {display: flex; flex-wrap: nowrap; width: 140vh; margin: 0 auto; justify-content: center; align-items: center;}
+		/* The three Bootstrap helpers the inventory panel uses, so Bootstrap is not needed. */
+		.d-flex {display: flex;}
+		.flex-wrap {flex-wrap: wrap;}
+		.overflow-auto {overflow: auto;}
+	</style>
+</head>
+<body>
+	<div id="gamewindow"></div>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.slim.min.js" crossorigin="anonymous"></script>
+	<script src="../generator/mazeutil.js"></script>
+	<script src="../generator/mazegen.js"></script>
+	<script src="../generator/mazeparams.js"></script>
+	<script src="../ui/music.js"></script>
+	<script src="../ui/mazehtml.js"></script>
+	<script src="demo.js"></script>
+</body>
+</html>

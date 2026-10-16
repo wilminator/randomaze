@@ -1,0 +1,97 @@
+@font-face {
+    font-family: "BarcadeBrawl";
+    /* src: url("BarcadeBrawlRegular-plYD.ttf"); */
+    src: url("barcade-brawl.woff");
+}
+
+.info {min-width:40vh; height:100vh; display: flex; flex-direction: column;justify-content:space-between ;}
+.statusWindow {height:100%; width:100%;}
+.textWindow {font:1.5vmin BarcadeBrawl;line-height: 2vmin;color:white;border: .75vmin white solid; border-radius:1.125vmin; margin: 1.125vmin; padding: 1.125vmin}
+.alertTop {top: 0px; font-size:3vmin; line-height: 4vmin; position:absolute; width:96vmin; height: 12vmin; background-color: #000000E0;}
+
+div.inventory {font:1.5vmin BarcadeBrawl;text-align: center;width:5vmin;height:7vmin;display:inline-block; margin: .125vmin;}
+img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; margin:auto; object-fit: scale-down;}
+
+
+
+.viewport {height:100vmin; width:100vmin; min-height:100vmin; min-width:100vmin; overflow:hidden; perspective: 49vmin; aspect-ratio: 1 / 1;}
+
+.mazemap {min-width: calc(max(250px, 30vmin));min-height:30vmin; color:white;margin: 1.5vmin auto; height:fit-content;}
+.floorMapContainer {display:flex; flex-direction:column; width: calc(max(250px, 30vmin));}
+.floorMapTitle {text-align: center; font-weight: bold; font:1.5vmin BarcadeBrawl;line-height: 2vmin;}
+.floorMapContent {width: calc(max(250px, 30vmin));min-height:30vmin;min-width:30vmin;display: grid; color:black; aspect-ratio: 1 / 1;}
+.mapCell { 
+	flex:1; 
+	background-color: gray; 
+	border: 1px transparent none; 
+	background-size: contain; 
+	background-repeat: no-repeat;
+	background-position: center;
+	line-height: 1;
+}
+
+.mazeRotate { height:100%; width:100%; transition: transform 0.5s; transform-style: preserve-3d; position: absolute}
+.mazeTranslate { height:100%; width:100%; transition: transform 0.5s; transform-style: preserve-3d; position: absolute}
+.mazeFloor { height:100%; width:100%; transform-style: preserve-3d; position: absolute}
+
+.offset {top: 50%; left: 50%; position: absolute; height:100vmin; width:100vmin;}
+.largeOffset {top: 50%; left: 50%; position: absolute; height:3000vmin; width:3000vmin; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+
+.tile {-webkit-backface-visibility: hidden; backface-visibility: hidden; transition: transform 1s; transform-style: preserve-3d; background-size: contain; overflow:hidden;}
+.wall {width:101vmin;height:101vmin;top:-0.5vmin;left:-0.5vmin;/*background-image:url(../img/wall/0.png);*/}
+.opening {background-color: black; opacity: 33%; }
+.floor {background-size: contain; background-color:#e2dc89; }
+.ceiling {background-size: contain; background-color:#3b3b3b; }
+.hole {clip-path: polygon(0% 0%, 30% 0%, 30% 70%, 70% 70%, 70% 30%, 30% 30%, 30% 0%, 100% 0%, 100% 100%, 0% 100%); }
+.outside {transform-style: preserve-3d; overflow:hidden;}
+
+.doorwall {clip-path: polygon(0% 0%, 0% 100%, 30% 100%, 30% 30%, 70% 30%, 70% 100%, 100% 100%, 100% 0%); transform-style: preserve-3d;background-size: contain; height:100vmin; width:100vmin;}
+.door {position:absolute;width:40vmin;height:70vmin;top:30vmin;left:30vmin;z-index:-1;/*background-image:url(../img/door/0.png);*/ background-size: contain;transition: transform 1s;  backface-visibility: hidden; -webkit-backface-visibility: hidden; font:3vmin BarcadeBrawl; color:white;}
+.doortitle {position:absolute; width: 100%;text-align: center;}
+.door::after {position:absolute; content:'';/*background-image:url(../img/inv/key/0.png);top:-100px;left:-30px;*/width:100%;height:75%;background-position:center;background-repeat:no-repeat;}
+.door_split_left {clip-path: polygon(0% 0%, 0% 100%, 31% 100%, 61% 0%);}
+.door_split_right {clip-path: polygon(100% 0%, 100% 100%, 30% 100%, 60% 0%);}
+.door_split_left_open {transform: translateX( -30vmin );}
+.door_split_right_open {transform: translateX( 30vmin );}
+.door_up_open {transform: translateY( 70vmin );}
+.door_down_open {transform: translateY( -70vmin );}
+.door_left_open {transform: translateX( -40vmin );}
+.door_right_open {transform: translateX( 40vmin );}
+.door_hinge_left_open_in {transform: rotateY( 170deg );}
+.door_hinge_left_open_out {transform: rotateY( -170deg );}
+
+.contents {transform-style: preserve-3d;}
+/*.item {height:100vmin; width:100vmin;transition: transform 0.5s;background-size: contain;}*/
+.ladder {transform-style: preserve-3d;height:100vmin; width:100vmin; }
+.ladder_U {background-image:url(../img/ladder/U.png);}
+.ladder_D {background-image:url(../img/ladder/D.png);}
+.key {/*background-image:url(../img/contents/key/0.png);*/}
+
+#touchNav { position: absolute; width: 100%; height: 100%; opacity: 0%;}
+.touchNav {position:absolute;background-color: #FFFFFF10; color: white; font:5vmin BarcadeBrawl; text-align: center; justify-content: center; display: flex; align-items: center;border: 0.5vmin white solid;}
+#touchFwd { width: 50%; left: 25%; top: 25%; height: 40%;}
+#touchBack { width: 90%; left: 5%; top: 85%; height: 15%;}
+#touchLeft { width: 20%; left: 5%; top: 20%; height: 60%; writing-mode:vertical-lr; transform: rotate(180deg);}
+#touchRight { width: 20%; left: 75%; top: 20%; height: 60%; writing-mode:vertical-lr;}
+#touchUp { width: 50%; left: 25%; top: 0%; height: 25%;}
+#touchDown { width: 50%; left: 25%; top: 65%; height: 20%;}
+#touchHide { width: 20%; left: 0%; top: 0%; height: 15%; font-size: 3vmin}
+#touchShow { width: 20%; left: 0%; top: 0%; height: 15%; font-size: 3vmin; opacity:20%}
+
+.icon {display:block;float:right}
+.disabledicon {opacity: 0.5;}
+
+
+/* On screens that are 140vh or less, switch to portrait mode. */
+
+@media screen and (max-width: 140vh) {
+  /* body { background-color: green; } */
+  #gamewindow {flex-wrap: wrap; width: 100vmin; max-width: 100vmin}
+  .info {width:97vw; height:max-content; flex-direction: row;}
+  .statusWindow {height: calc(max(250px, 30vmin) + 2vmin);}
+  .mazemap { margin:1.5vmin }
+  /* #directions {display: none;} */
+  #touchNav {opacity: 100%;}
+  #touchShow { opacity: 0%}
+}
+

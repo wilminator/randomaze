@@ -1,0 +1,14 @@
+{
+  "name": "randomaze",
+  "version": "0.1.0",
+  "description": "Seeded random 3D maze generator with keys, locked doors, ladders and one-way walls, plus a first-person browser UI.",
+  "license": "SEE LICENSE IN LICENSE-EXCEPTION.md",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node tools/check_mazes.js"
+  },
+  "devDependencies": {
+    "seedrandom": "3.0.5"
+  }
+}

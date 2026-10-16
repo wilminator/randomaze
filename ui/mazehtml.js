@@ -1,0 +1,1131 @@
+// Constants
+const viewRange = 5; // Viewing range. Cells farther away are hidden.
+
+const turnRight = {'N':'E','E':'S','S':'W','W':'N'};
+const turnLeft = {'N':'W','W':'S','S':'E','E':'N'};
+
+const walls = [
+	{'color':'#C0C0C0','img':''},
+];
+const doors = [
+	{'map':'1px black solid', 'wall':'gray', 'img':''},
+	{'map':'2px brown solid', 'wall':'brown', 'img':''},
+	{'map':'2px red solid', 'key':'red', 'wall':'red', 'img':''},
+	{'map':'2px orange solid', 'key':'orange', 'wall':'orange', 'img':''},
+	{'map':'2px yellow solid', 'key':'yellow', 'wall':'yellow', 'img':''},
+	{'map':'2px green solid', 'key':'green', 'wall':'green', 'img':''},
+	{'map':'2px darkblue solid', 'key':'darkblue', 'wall':'darkblue', 'img':''},
+	{'map':'2px purple solid', 'key':'purple', 'wall':'purple', 'img':''},
+	{'map':'2px pink solid', 'key':'pink', 'wall':'pink', 'img':''},
+	{'map':'2px aqua solid', 'key':'aqua', 'wall':'aqua', 'img':''},
+	{'map':'2px springgreen solid', 'key':'springgreen', 'wall':'springgreen', 'img':''},
+	{'map':'2px red solid', 'key':'red', 'wall':'red', 'img':''},
+	{'map':'2px orange solid', 'key':'orange', 'wall':'orange', 'img':''},
+	{'map':'2px yellow solid', 'key':'yellow', 'wall':'yellow', 'img':''},
+	{'map':'2px green solid', 'key':'green', 'wall':'green', 'img':''},
+	{'map':'2px darkblue solid', 'key':'darkblue', 'wall':'darkblue', 'img':''},
+	{'map':'2px purple solid', 'key':'purple', 'wall':'purple', 'img':''},
+	{'map':'2px pink solid', 'key':'pink', 'wall':'pink', 'img':''},
+	{'map':'2px aqua solid', 'key':'aqua', 'wall':'aqua', 'img':''},
+	{'map':'2px springgreen solid', 'key':'springgreen', 'wall':'springgreen', 'img':''},
+];
+
+const wallRotate = { 'E': '-90deg', 'W': '90deg', 'N': '0deg', 'S':  '180deg'};
+const dirCss = { 'E': 'border-right', 'W': 'border-left', 'N': 'border-top', 'S': 'border-bottom' };
+const dirText = { };
+const dirClass = {'U':'fas fa-level-up-alt','D':'fas fa-level-down-alt'};
+const keyClass ="fas fa-key";
+const entranceClass = { 'E': 'fas fa-arrow-left', 'W': 'fas fa-arrow-right', 'N': 'fas fa-arrow-down', 'S': 'fas fa-arrow-up' };
+const oneWayWallClass = { 'W': 'fas fa-arrow-left', 'E': 'fas fa-arrow-right', 'S': 'fas fa-arrow-down', 'N': 'fas fa-arrow-up' };
+const oneWayWallHtml = { 'W': '&#57909;', 'E': '&#57908;', 'S': '&#57907;', 'N': '&#57906;' };
+const stopPropagation = event=>event.stopImmediatePropagation();
+const defaultDoorNew = (elem, key, text)=>{
+	const door = $('<div>').addClass(`door door_${key}`);
+	door.append($('<div>').addClass('doortitle').text(text));
+	elem.append(door);
+};
+const defaultDoorOpen = (door, otherDoor, openCss, otherOpenCss = null)=>{		
+	// Only one door transition can trigger, or there are UI problems.
+	door.children('.door').addClass(openCss);
+	otherDoor.children('.door').on('transitionend', stopPropagation).addClass(otherOpenCss ? otherOpenCss : openCss);
+};
+const openDoorFxns = {
+	up:{
+		new: defaultDoorNew,
+		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_up_open'),
+	},
+	down:{
+		new: defaultDoorNew,
+		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_down_open'),
+	},
+	left:{
+		new: defaultDoorNew,
+		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_left_open'),
+	},
+	right:{
+		new: defaultDoorNew,
+		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_right_open'),
+	},
+	split:{
+		new:(elem, key, text)=>{
+			const door_a = $('<div>').addClass(`door door_split_left door_${key}`);
+			door_a.append($('<div>').addClass('doortitle').text(text));
+			elem.append(door_a);
+			const door_b = $('<div>').addClass(`door door_split_right door_${key}`);
+			door_b.append($('<div>').addClass('doortitle').text(text));
+			elem.append(door_b);
+		},
+		open:(door, otherDoor)=>{		
+			// Only one door transition can trigger, or there are UI problems.
+			door.children('.door_split_left').addClass('door_split_left_open');
+			door.children('.door_split_right').on('transitionend', stopPropagation).addClass('door_split_right_open');
+			otherDoor.children('.door_split_left').on('transitionend', stopPropagation).addClass('door_split_left_open');
+			otherDoor.children('.door_split_right').on('transitionend', stopPropagation).addClass('door_split_right_open');
+		},
+	},
+};
+
+const gameDebug = false; // allow wall passthrough
+
+class MazeHtml{
+	constructor(seed, maze) {
+		this.seed = seed;
+		this.generator = new Math.seedrandom(seed);
+		this.generateInt = generateIntegerWrapper(this.generator);
+		this.maze = maze;
+		this._debug = false;
+		this.mapHtml = this.generateMapHtml();
+		this.helpFxn = null;
+		this.music = null;
+		this.walls = [];
+		this.items = [];
+		this.doors = [];
+		this.clips = [];
+		// Prefix for the images this file loads itself (the map's player marker), relative to the page.
+		// The site serves img/ next to its pages; a page elsewhere sets this, e.g. '../ui/'.
+		this.assetRoot = '';
+		// This engine needs a script tag in the root html page.
+		// Find it. Assert if it can't be found.
+		this.styleSheet =  [...document.styleSheets].filter((x)=>x.href==null).pop();
+	}
+
+	selectRandomTag(object, tag){
+		const choices = Object.values(object).filter(x=>x.tags.includes(tag));
+		if (choices.length > 0) {
+			return choices[this.generateInt(choices.length)];
+		}
+		return undefined;
+	}
+
+	loadWall(wall){
+		/*
+		{
+			name: name of the image
+			css: css definition for this wall
+			tags: array of possible use locations: wall, ceiling, or floor.
+		}
+		*/
+		this.walls.push(wall);
+	}
+	
+	loadItem(item){
+		/*
+		{
+			name: name of the item
+			initials: short version of name. Used as keys for colorblind aid.
+			src: The location of the maze-rendered item image. 375 x 375
+			invsrc: The location of the inventory image for this item.
+			css: css definition for this item. Added to both maze and inventory html.			
+			tags: array of possible uses: key, treasure, equipment.
+			doorcolor: if 'key' is a tag, this is the color the door should be on the map.
+		}
+		*/
+		this.items.push(item);
+	}
+	
+	loadDoor(door){
+		/*
+		{
+			css: css definition for this door
+			tags: array of possible ways to open. Must be defined in openDoorFxns.
+		}
+		*/
+		this.doors.push(door);
+	}
+	
+	loadClip(clip){
+		/*
+		{
+			url: url to clip
+			tags: array of possible uses: maze, effect, combat, combat_win, game_win, game_loss, ladder, wall, close, door, pickup
+		}
+		*/
+		this.clips.push(clip);
+	}
+	
+	debug(value) {			
+		this._debug = value;		
+		var border = this._debug ? "2px black solid" : "2px transparent none";
+		this.maze.cellList.map(x=>x.map.css({"border": border}));
+		if (value) {
+			const div=$('<div>').css({display:"flex"});
+			this.mapHtml.forEach(function (x){
+				div.append(x);
+				div.append($('<div>').css({width:'10px'}));
+			});
+			$('body').prepend(div);
+			this.mapList = div
+		}
+		else {
+			this.mapHtml.remove();
+			delete this.mapList;
+		}
+	}
+
+	generateMapHtml(){		
+		function newCell() {
+			return $('<div>').addClass('mapCell').html('&nbsp;');
+		}
+		const mapHtml = [];
+		// Define a data structure for entrance markers.
+		this.entranceGrid = [];
+		// Create the HTML structure.
+		for (var f = 0; f < this.maze.floors; ++f) {
+			// Setup the floor entrance grid.
+			const eg = {'N':[],'S':[],'E':[],'W':[]};
+			this.entranceGrid.push(eg);
+			// Add floor.
+			const floorContainer = $('<div>').addClass('floorMapContainer');
+			const floorElement = $('<div>').addClass('floorMapTitle').text("Floor " + (f+1));
+			floorContainer.append(floorElement);
+			mapHtml.push(floorContainer);
+			const mapContainer = $('<div>').addClass('floorMapContent').css({'grid-template-columns': `repeat(${this.maze.columns + 2}, 1fr)`,'grid-template-rows': `repeat(${this.maze.rows + 2}, 1fr)`,'aspect-ratio': '1/1'});
+			floorContainer.append(mapContainer);
+			// Add north entrance cells.
+			mapContainer.append(newCell());
+			for (var c = 0; c < this.maze.columns; ++c) {
+				const cell = newCell();
+				//northEntrance.append(cell);
+				mapContainer.append(cell);
+				eg.N.push(cell);
+			}
+			mapContainer.append(newCell());
+			// Now start core map cells.
+			for (var r = 0; r < this.maze.rows; ++r) {
+				// Add row
+				const westEntrance = newCell();
+				mapContainer.append(westEntrance);
+				eg.W.push(westEntrance);
+				for (var c = 0; c < this.maze.columns; ++c) {
+					// Add cell
+					const cell = newCell();					
+					mapContainer.append(cell);
+					// Update grid to contain HTML.
+					this.maze.grid[f][r][c].map = cell;					
+				}	
+				const eastEntrance = newCell();
+				mapContainer.append(eastEntrance);
+				eg.E.push(eastEntrance);
+			}
+			// Add south entrance cells.
+			mapContainer.append(newCell());
+			for (var c = 0; c < this.maze.columns; ++c) {
+				const cell = newCell();
+				mapContainer.append(cell);
+				eg.S.push(cell);
+			}
+			mapContainer.append(newCell());
+		}
+		// Create flat entrance cell list.
+		this.entranceGridList = this.entranceGrid.map(x=>Object.values(x)).flat(2);
+		return mapHtml;
+	}
+
+	renderMapWall(cell, dir) {
+		const wallValue = cell.data[dir];
+		const openValue = cell.play[dir];
+		if (dir in dirCss){
+			var color;
+			switch (wallValue) {
+				case null:
+					color = 'transparent none';
+					break;
+				case 0:
+				case 1:
+					color = openValue ? 'transparent none' : doors[wallValue].map;
+					break;
+				default:					
+					color = openValue ? 'transparent none' : (this.keyList ? `2px ${this.keyList[wallValue].doorcolor} solid` : doors[wallValue].map);
+					break;
+			}			
+			// Update the wall on the map.
+			cell.map.css(dirCss[dir], color);
+		}
+		if (dir in dirClass){
+			if (wallValue === null){
+				// Add a stair to the map.
+				cell.map.addClass(dirClass[dir]);
+				//cell.map.css('color', color);
+			}
+			else{
+				// Remove a stair from the map.
+				if (cell.map.attr("class") == dirClass[dir]) {
+					cell.map.removeClass(dirClass[dir]);
+				}
+			}
+		}
+	}
+	
+	// Debug helpers for the generator, so mazegen.js does not need this file's globals.
+	debugKeyColor(key) {
+		return doors[key].key;
+	}
+
+	renderMapDebugKey(cell, key, css = {}) {
+		this.renderMapDebug(cell, null, Object.assign({'color': this.debugKeyColor(key)}, css), null, keyClass);
+	}
+
+	renderMapDebug(cell, dir = null, css = null, text = null, addClass = null) {
+		if (dir) {
+			this.renderMapWall(cell, dir);
+		}
+		if (css && Object.values(css).length > 0) {
+			cell.map.css(css);
+		}
+		if (text) {
+			cell.map.text(text);
+		}
+		if (addClass) {
+			cell.map.addClass(addClass);
+		}
+	}	
+	
+	renderMapCell(cell) {
+		if (this._debug || cell.play.visited) {
+			cell.map.html('&nbsp;').css('background-color','white').addClass('mapCell');
+			for (const dir of ['N','S','E','W','U','D']) {
+				this.renderMapWall(cell, dir);
+				const nextCell = this.maze.getNextCell(cell, dir);
+				if (nextCell && nextCell.data[opposite[dir]] != cell.data[dir] && cell.data[dir] == null &&
+					(this._debug || nextCell.play.visited)) {
+					cell.map.addClass(oneWayWallClass[dir]);
+				}
+			}
+			if (this._debug && 'key' in cell.data.item) {
+				cell.map.addClass(keyClass).css('color',doors[cell.data.item.key].key);					
+			}
+		}
+		else {
+			cell.map.html('&nbsp;').css({'background-color':'gray', 'border':'2px transparent none'}).removeClass().addClass('mapCell');
+		}
+	}
+	
+	renderMap() {
+		for (const cell of this.maze.cellList) {
+			this.renderMapCell(cell);
+		}
+		if (this._debug) {
+			for (const e in this.maze.entranceList) {
+				const ent = this.maze.entranceList[e];
+				// Update the entrance grid.
+				this.entranceGrid[ent.floor][ent.dir][ent.pos].css({'background-color':'#FFF'}).addClass(entranceClass[ent.dir]).text(parseInt(e)+1);
+			}
+		}
+		
+	}
+
+	renderMapCursor(cell, dir = null) {
+		if (dir) {
+			cell.map.css('background-image',`url(${this.assetRoot}img/misc/pc_${dir}.png)`);
+		}
+		else {
+			cell.map.css('background-image','');
+		}
+	}
+	
+	debugResetToEmpty() {
+		this.maze.cellList.forEach(cell => cell.map.html('&nbsp;'));
+	}
+	
+	debugResetToStack(stack) {
+		this.debugResetToEmpty();
+		stack.forEach(cell => cell.map.text(cell.work.dist));
+	}
+	
+	debugResetToDist(){
+		this.maze.cellList.forEach(c => c.map.text(c.work.dist));
+	}
+	
+	debugEntranceGrid(f, dir, pos, number){
+		this.entranceGrid[f][dir][pos].css({'background-color':'#FFF'}).addClass(entranceClass[dir]).text(number);
+	}
+	
+	debugOneWayArrow(cell, dir) {
+		cell.map.addClass(oneWayWallClass[dir]);
+	}
+
+	generateMazeHtml() {
+		const html = [];
+		for (var floor = 0; floor < this.maze.floors; ++floor) {
+			const floorDiv = $('<div>').addClass('mazeFloor');
+			const wallCss = this.wallTiles[floor];
+			html.push(floorDiv);
+			for (var row = 0; row < this.maze.rows; ++row) {
+				for (var column = 0; column < this.maze.columns; ++column) {
+					const cell = this.maze.grid[floor][row][column];
+					const px = 100 * column; // left-right
+					const pz = 100 * row; // front-back
+					const contents = $('<div>').addClass('offset contents').css('transform', `translate3d(${px}vmin, 0vmin, ${pz}vmin)`);
+					const fTile = $('<div>').addClass('offset floor').css('transform', `translate3d(${px}vmin, 50vmin, ${pz}vmin) rotateX(90deg)`);
+					const cTile = $('<div>').addClass('offset ceiling').css('transform', `translate3d(${px}vmin, -50vmin, ${pz}vmin) rotateX(90deg)`);
+					cell.html={contents:contents,floor:fTile,ceiling:cTile};
+					const entrance = this.maze.entranceList.filter(e=>e.cell === cell);
+					for (const dir of ['N','E','S','W']) {
+						// Default orientation is facing north at 0,0.						
+						//const px = 100 * column + 50 * dx[dir]; // left-right
+						//const pz = 100 * row + 50 * dy[dir]; // front-back
+						// py is the floor, not used here.
+						const ry = wallRotate[dir];
+						const css = `translate3d(${px+ 50 * dx[dir]}vmin, 0vmin, ${pz+ 50 * dy[dir]}vmin) rotateY(${ry})`;
+						const elem = $('<div>').addClass('offset tile').css('transform', css);
+						floorDiv.append(elem);
+						// Store this element for manipulation.
+						cell.html[dir] = elem;
+						switch (cell.data[dir]) {
+							case null: //opening
+								// Is to outside?
+								if (entrance.length > 0 && entrance[0].dir == dir) {
+									elem.addClass('outside');
+								}
+								else {
+									elem.addClass('opening');
+								}
+								break;
+							case 0: //wall
+								elem.addClass(wallCss);
+								break;
+							default: //door
+								//const css = `hue-rotate(${cell.data[dir] * 24 - 48}deg)`;
+								const key = cell.data[dir];
+								const holeyWall = $('<div>').addClass(`${wallCss} doorwall`);
+								elem.append(holeyWall);
+								openDoorFxns['split'].new(elem, key, this.keyList[key].initials);
+								/*
+								//const keyName = `#${cell.data[dir]-1}`;
+								//const door_a = $('<div>').css({filter: css}).addClass('door door_a').text(keyName);
+								const door_a = $('<div>').addClass(`door door_a door_${key}`);
+								door_a.append($('<div>').addClass('doortitle').text(this.keyList[key].initials));
+								elem.append(door_a);
+								//const door_b = $('<div>').css('filter', css).addClass('door door_b').text(keyName);
+								const door_b = $('<div>').addClass(`door door_b door_${key}`);
+								door_b.append($('<div>').addClass('doortitle').text(this.keyList[key].initials));								
+								elem.append(door_b);
+								*/
+						}
+					}
+					floorDiv.append(contents);
+					floorDiv.append(fTile);
+					floorDiv.append(cTile);
+					// Add ladders and other cell contents.
+					for (const dir of ['U','D']) {
+						if (cell.data[dir] === null) {
+							const elem = $('<div>').addClass(`item ladder ladder_${dir}`);
+							contents.append(elem);
+							const hole = dir == 'U' ? cTile : fTile;
+							hole.addClass('hole');
+						}
+					}
+					// Add key
+					if (cell.data.item.key) {
+						//const elem = $('<div>').addClass('item key').css('filter',`hue-rotate(${cell.data.item.key * 24 - 48}deg)`);
+						const elem = $('<div>').addClass(`item key key_${cell.data.item.key}`);
+						contents.append(elem);
+					}
+				}
+			}			
+		}
+		// Add entrnaces that look like they are outside.
+		
+		for (var entrance of this.maze.entranceList) {
+			const [f, r, c] = entrance.cell.loc;
+			const x = c + dx[entrance.dir];
+			const y = r + dy[entrance.dir];
+			const px = 100 * x; // left-right
+			const pz = 100 * y; // front-back
+			const fTile = $('<div>').addClass('offset outside floor').css({'transform': `translate3d(${px}vmin, 50vmin, ${pz}vmin) rotateX(90deg)`,'background-color':'#7CFC00'});
+			const cTile = $('<div>').addClass('offset outside ceiling').css({'transform': `translate3d(${px}vmin, -50vmin, ${pz}vmin) rotateX(-90deg)`,'background-color':'skyblue'});
+			html[f].append(fTile);
+			html[f].append(cTile);
+			for (const dir of ['N','E','S','W']) {
+				if (dir != opposite[entrance.dir]) {
+					const ry = wallRotate[dir];
+					const css = `translate3d(${px+ 50 * dx[dir]}vmin, 0vmin, ${pz+ 50 * dy[dir]}vmin) rotateY(${ry})`;
+					const tile = $('<div>').addClass('offset outside ceiling').css({'transform':css, 'background-color':'skyblue'});
+					html[f].append(tile);
+				}
+			}
+		}
+		
+		return html;
+	}
+
+	setItemHtmlRotation(degrees) {
+		this.cssRules.item.style.transform = `rotateY(${-degrees}deg)`;
+		/*
+		// This searches for the .item CSS rule and updates it to rotate by the degrees variable.
+		if (!this.cssRule) {
+			// Find the stinking rule
+			for (const styleSheet of document.styleSheets){
+				if (styleSheet.href && styleSheet.href.endsWith('/css/maze.css')) {
+					try {
+						for (const rule of styleSheet.cssRules){
+							if (rule.selectorText && rule.selectorText == '.item') {
+								this.cssRule = rule;
+								break;
+							}
+						}
+					}
+					catch{}
+				}	
+			}
+		}
+		if(this.cssRule) {
+			this.cssRule.style.transform = `rotateY(${-degrees}deg)`;
+		}
+		*/
+	}
+	
+	generateGameUi(rootNodeId, helpFxn = null) {
+		this.rootNode = $(`#${rootNodeId}`);
+		const gameUi = $(`
+  <div id="maze">
+	  <div class="viewport">
+		<div id="mazeRotate" class="mazeRotate" style="transform: translate(-50%,-50%);">
+		  <div id="mazeTranslate" class="mazeTranslate">
+		  </div>
+		</div>
+	  <div class="touchNav" id="touchShow">Show</div>	  
+		<div id="touchNav">
+		  <div class="touchNav" id="touchFwd">Forward</div>
+		  <div class="touchNav" id="touchBack">Backward</div>
+		  <div class="touchNav" id="touchLeft">Left</div>
+		  <div class="touchNav" id="touchRight">Right</div>
+		  <div class="touchNav" id="touchUp">Up</div>
+		  <div class="touchNav" id="touchDown">Down</div>	  
+		  <div class="touchNav" id="touchHide">Hide</div>	  
+		</div>
+	  </div>
+  </div>
+  <div class="info">
+  <div id="map" class="mazemap"></div>
+  <div id="status" class="textWindow statusWindow">
+	<div id="help" class="fa fa-cog icon"></div>
+	<div id="gamevolup" class="icon">&#x1F50A</div>
+	<div id="gamemute" class="icon">&#x1F4E2</div>
+	<div id="gamevoldn" class="icon"">&#x1F509</div>  
+    <div id="moves">Moves: 0</div>
+    <div><br />Inventory
+	<div id="inventory" class="d-flex flex-wrap overflow-auto"></div>	
+	</div>
+  </div>
+  </div>
+`);
+`
+<!--<div id="directions">
+<br />
+Directions:<br />
+&uarr; Forward/Open<br />
+&larr; Turn Left<br />
+&rarr; Turn Right<br />
+&darr; Backward<br />
+PgUp Climb<br />
+PgDn Descend<br />		
+</div>-->
+`
+		this.rootNode.append(gameUi);
+		this.mapHtml = this.generateMapHtml();
+		if (helpFxn) {
+			this.helpFxn = helpFxn;
+			$('#help').click(function(){helpFxn({state:'help'})});
+		}
+		var myThis = this;
+		$("#gamemute").click(function(){setAudioState(!getAudioState());myThis.setVolUI();setVolume()});
+		$("#gamevolup").click(function(){updateVolume(10);});
+		$("#gamevoldn").click(function(){updateVolume(-10);});
+	}
+
+	setVolUI(){
+		if (getAudioState()){
+			$("#gamevolup,#gamevoldn,#gamemute").removeClass('disabledicon');
+		}
+		else {
+			$("#gamevolup,#gamevoldn,#gamemute").addClass('disabledicon');
+		}
+	}
+
+	getClip(tag) {
+		let choice = this.selectRandomTag(this.clips, tag);
+		if (choice) {
+			return new Audio(choice.url);
+		}
+		return null;
+	}
+	
+	playGame(winFunc = null, loseFunc = null) {
+		const mapElement=$('#map');
+		const mazeElement=$('#maze');
+		const mazeTranslateElement=$('#mazeTranslate');
+		const mazeRotateElement=$('#mazeRotate');
+		const maze = this.maze;
+		const mazehtmlui = this;
+
+		// Between the time the UI was made and now, the maze could have been generated.
+		// Define the visual characteristics of the maze.
+
+		// Now update css for the game.
+		// Create the .item class.
+		let item = this.styleSheet.insertRule(`.item {height:100vmin; width:100vmin;transition: transform 0.5s;background-size: contain;}`);
+		this.cssRules = {
+			item: this.styleSheet.cssRules[item]
+		}
+
+		// Walls
+		// Load in wall resources
+		for (const wall of this.walls){
+			const name = `wall_${wall.name}`;
+			const item = this.styleSheet.insertRule(`.${name} {${wall.css}}`);
+			this.cssRules[name] = this.styleSheet.cssRules[item];
+		}
+		// Generate one wall tile per floor.
+		this.wallTiles = [...Array(this.maze.floors)].map(_=>`wall_${this.selectRandomTag(this.walls,'wall').name}`);
+
+		// Keys and Doors
+		// Generate one key for each key in the maze.		
+		const keyCells = maze.cellList.filter(c=>c.data.item.key);
+		const shuffledKeys = this.items.filter(x=>x.tags.includes('key'))
+			.map(value => ({ value, sort: this.generator() }))
+			.sort((a, b) => a.sort - b.sort)
+			.map(({ value }) => value);
+		this.keyList = {};
+		for (var i = 0, j = 0; i < keyCells.length; ++i) {
+			// i = lock number
+			// j = key item
+			// i == 1 gets NO key item.
+
+			// Get the lock number
+			const key = keyCells[i].data.item.key;
+			// Create a construct for the needed key
+			const keyObj = key == 1 ? {} : shuffledKeys[j++];
+			// Store this key data
+			this.keyList[key] = keyObj;
+			// Pick the door type for this key.
+			const door = this.doors[this.generateInt(this.doors.length)];
+			// Pick a door function and tag this door with it.
+			keyObj.open = door.tags[this.generateInt(door.tags.length)];
+			// Create the door css
+			const door_name = `door_${key}`;
+			const door_css = this.styleSheet.insertRule(`.${door_name} {${door.css}}`);
+			this.cssRules[door_name] = this.styleSheet.cssRules[door_css];
+			// Check if the door actually needs a key.
+			if (key > 1){
+				// Create the key css
+				const door_after_css = this.styleSheet.insertRule(`.${door_name}::after {background-image:url(${keyObj.invsrc}); ${keyObj.css}}`);
+				this.cssRules[`${door_name}_after`] = this.styleSheet.cssRules[door_after_css];
+				const key_name = `key_${key}`;
+				const key_css = this.styleSheet.insertRule(`.${key_name} {background-image:url(${keyObj.src}); ${keyObj.css}}`);
+				this.cssRules[key_name] = this.styleSheet.cssRules[key_css];
+			}
+		}
+
+
+		// Generate maze HTML.
+		const mapHtml = this.mapHtml;
+		const mazeHtml = this.generateMazeHtml();
+		if (!this.music) {
+			this.music = this.getClip('maze');
+		}
+		setMusic(this.music);
+		this.setVolUI();
+		
+		// Attach events.
+		// Display the map ready for play
+		var [pZ, pY, pX] = maze.entranceList[0].cell.loc;
+		var pDir = opposite[maze.entranceList[0].dir];
+		var pDeg = { 'E': 90, 'W': -90, 'N': 0, 'S': 180}[pDir];
+		var pKeys = [1];
+		var animationState = false;
+		var mayProcessAction = true;
+		var alertTimeout = null;
+		var moves = 0;
+		const eventQueue = [];
+		const keyPressed = {};
+		var gameLoopThread = null;
+		var gameOver = null;
+		// An instance variable for checking outside of the object.
+		this.gameOver = false;
+		// Local this variable
+		const localThis = this;
+		
+		// This is the list of actions taken.
+		var actions=[];
+
+		function hideOutOfRangeCells(cx, cy, cz, range){
+			for(var y = 0; y < maze.rows; ++y){
+				const show = y >= cy - range && y <= cy + range;
+				for(var x = 0; x < maze.columns; ++x){
+					if (show &&  x >= cx - range && x <= cx + range) {
+						Object.values(maze.grid[cz][y][x].html).forEach(x => x.show());
+					}
+					else {
+						Object.values(maze.grid[cz][y][x].html).forEach(x => x.hide());
+					}
+				}
+			}
+		}
+
+		function gameLoop(){
+			var endAnimation = false;
+			while (eventQueue.length > 0) {
+				const event = eventQueue.shift();
+				switch (event) {
+					case 'trapEntrance':
+						const wall = $('.trapEntrance');
+						wall.removeClass('trapEntrance').css({transition:'transform steps(5, jump-both) 2000ms',transform: 'translate3d(-50vmin, -50vmin, 0vmin)'});
+						// Play the sound
+						playSound(localThis.getClip('close'));
+						// Set the state.
+						animationState='entranceTrap';		
+					case 'animationStop':				
+						endAnimation = true;
+						break;
+					case 'keydown':
+					case 'keyup':
+					default:
+						break;
+				}
+			}
+			if (endAnimation) {
+				mayProcessAction = processEndAnimation();
+			}
+			if (mayProcessAction) {
+				const keys = Object.keys(keyPressed);
+				if (keys.length == 1) {
+					mayProcessAction = processKeyPress(keys[0]);
+				}
+			}
+		}
+
+		function processKeyPress(key) {
+			// Get the current cell.
+			const cell = maze.grid[pZ][pY][pX];	
+			switch (key) {
+				case 'ArrowUp':
+					if (cell.data[pDir] === null || (cell.data[pDir] >0 && cell.play[pDir]) || (gameDebug && !cell.html[pDir].hasClass('outside'))) {
+						// Is this leaving the maze?
+						if (cell.html[pDir].hasClass('outside')) {
+							// We are trying to leave. See if this is the last entrance.
+							if (cell !== maze.entranceList[maze.entrances - 1].cell) {
+								// Nope. 
+								const fauxWall = cell.html[pDir];
+								if (fauxWall.children().length == 0) {
+									// And the walls come tumbling down!
+									const wallCss = localThis.wallTiles[pZ];
+									const wall = $('<div>').addClass(`offset tile ${wallCss} trapEntrance`).css('transform', 'translate3d(-50vmin, -150vmin, 0vmin)');
+									fauxWall.append(wall);
+									// Pop onto the event queue or it will not animate.
+									eventQueue.push('trapEntrance');
+									//wall.css('transform', 'translate3d(-50vmin, -50vmin, 0vmin)');						
+									// Set the state.
+									//animationState='trapEntrance';
+									moves += 1
+									return false;
+								}						
+								// Else play sad sound.						
+								return true;
+							}
+							else {
+								gameOver = {state:'win', moves:moves + 1, cells:maze.floors * maze.columns * maze.rows};
+							}
+						}
+						// Move
+						pX += dx[pDir];
+						pY += dy[pDir];
+						// Update the GUI
+						hideOutOfRangeCells(pX, pY, pZ, viewRange);
+						mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
+						animationState = 'forward';
+						moves += 1
+						return false; // action in progress
+					}
+					if (cell.data[pDir] >0) {
+						if (pKeys.includes(cell.data[pDir])){
+							const door = cell.html[pDir];
+							cell.play[pDir] = true;
+							const nextCell = maze.getNextCell(cell, pDir);
+							const oDoor = nextCell.html[opposite[pDir]];
+							nextCell.play[opposite[pDir]] = true;
+							const anim = localThis.keyList[cell.data[pDir]].open;
+							openDoorFxns[anim].open(door, oDoor);
+							/*
+							door.children('.door_a').addClass('door_open_left');
+							door.children('.door_b').addClass('door_open_right');
+							oDoor.children('.door_a').addClass('door_open_left');
+							oDoor.children('.door_b').addClass('door_open_right');
+							*/
+							// Open door
+							animationState = 'door';
+							moves += 1
+							// Play the sound
+							playSound(localThis.getClip('door'));
+							return false; // action in progress
+						}
+						else {
+							// Play no key 
+						}
+					}
+					else {
+						//play bump
+					}
+					break;
+				case 'ArrowDown':
+					const oDir = opposite[pDir];
+					if ((cell.data[oDir] === null && !cell.html[oDir].hasClass('outside')) || (cell.data[oDir] >0 && cell.play[oDir])) {
+						// Move
+						pX -= dx[pDir];
+						pY -= dy[pDir];
+						// Update the GUI
+						hideOutOfRangeCells(pX, pY, pZ, viewRange);
+						mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
+						animationState = 'backward';
+						moves += 1
+						return false; // action in progress
+					}
+					else {
+						//play bump
+					}
+					break;
+				case 'ArrowLeft':
+					pDir = turnLeft[pDir];
+					pDeg -= 90;
+					// Update the GUI
+					mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
+					mazehtmlui.setItemHtmlRotation(pDeg);
+					animationState = 'left';
+					moves += 1
+					return false; // action in progress
+				case 'ArrowRight':
+					pDir = turnRight[pDir];
+					pDeg += 90;
+					// Update the GUI
+					mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
+					mazehtmlui.setItemHtmlRotation(pDeg);
+					animationState = 'right';
+					moves += 1
+					return false; // action in progress
+				case 'PageUp':
+					if (pZ < maze.floors - 1 && cell.data.U === null) {
+						// Hide the map cursor
+						mazehtmlui.renderMapCursor(cell);
+						// Move
+						++pZ;
+						// Update the UI
+						animationState = 'up';
+						mazeTranslateElement.css({'transition':'transform cubic-bezier(0.36, 0, 0.66, -0.56) 1500ms','transform':`translate3d(${-100*pX}vmin, 100vmin, ${-100*pY}vmin)`});
+						moves += 1
+						// Play ladder sound
+						playSound(localThis.getClip('ladder'));
+						return false; // action in progress
+					}
+					break;
+				case 'PageDown':
+					if (pZ > 0 && cell.data.D === null) {
+						// Hide the map cursor
+						mazehtmlui.renderMapCursor(cell);
+						// Move
+						--pZ;
+						// Update the UI
+						animationState = 'down';
+						mazeTranslateElement.css({'transition':'transform cubic-bezier(0.36, 0, 0.66, -0.56) 1500ms','transform':`translate3d(${-100*pX}vmin, -100vmin, ${-100*pY}vmin)`});
+						moves += 1
+						// Play ladder sound
+						playSound(localThis.getClip('ladder'));
+						return false; // action in progress
+					}
+					break;
+			}
+			return true; // May process more actions
+		}
+
+		function processEndAnimation() {
+			// Update the move counter.	
+			$('#moves').text(`Moves: ${moves}`);
+			var lastCell, nextCell;
+			switch (animationState) {
+				case 'forward':
+					if (gameOver && gameOver.state == 'win') {
+						const alert = $('<div>').addClass('alertTop textWindow').html('You have escaped the maze.<br />YOU WIN!!!');
+						mazeElement.append(alert);
+						localThis.setGameOver(true);
+						const music = localThis.getClip('game_win'); //new Audio('audio/win.mp3');
+						setMusic(music, false);
+						setTimeout(function(){localThis.removeGameUi(gameOver)}, 10000);
+						return;
+					}		
+					// Update the visit flag for this cell.
+					nextCell = maze.grid[pZ][pY][pX];
+					// Also update for last cell.
+					lastCell = maze.getNextCell(nextCell, opposite[pDir]);
+					// No more animations.
+					animationState = false;
+					break;
+				case 'backward':
+					// Update the visit flag for this cell.
+					nextCell = maze.grid[pZ][pY][pX];
+					// Also update for last cell.
+					lastCell = maze.getNextCell(nextCell, pDir);
+					// No more animations.
+					animationState = false;
+					break;
+				case 'left':
+				case 'right':
+					// Update the visit flag for this cell.
+					nextCell = maze.grid[pZ][pY][pX];
+					// No more animations.
+					animationState = false;
+					break;
+				case 'up':
+					mazeTranslateElement.css({'transition':'transform 1ms','transform':`translate3d(${-100*pX}vmin, -100vmin, ${-100*pY}vmin)`});
+					mazeTranslateElement.empty();			
+					animationState = 'up2';
+					break;
+				case 'up2':
+					mapElement.empty().prepend(mapHtml[pZ]);
+					mazeTranslateElement.prepend(mazeHtml[pZ]);
+					hideOutOfRangeCells(pX, pY, pZ, viewRange);
+					mazeTranslateElement.css({'transition':'transform ease-out 1500ms','transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
+					animationState = 'up3';
+					// Play ladder sound
+					playSound(localThis.getClip('ladder'));
+					break;
+				case 'up3':
+					mazeTranslateElement.css({'transition':''});
+					mazehtmlui.renderMapCursor(maze.grid[pZ][pY][pX], pDir);
+					animationState = false;
+					// Update the visit flag for this cell.
+					nextCell = maze.grid[pZ][pY][pX];
+					break;
+				case 'down':
+					mazeTranslateElement.css({'transition':'transform 1ms','transform':`translate3d(${-100*pX}vmin, 100vmin, ${-100*pY}vmin)`});
+					mazeTranslateElement.empty();			
+					animationState = 'down2';
+					break;
+				case 'down2':
+					mapElement.empty().prepend(mapHtml[pZ]);
+					mazeTranslateElement.prepend(mazeHtml[pZ]);
+					hideOutOfRangeCells(pX, pY, pZ, viewRange);
+					mazeTranslateElement.css({'transition':'transform ease-out 1500ms','transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
+					animationState = 'down3';
+					// Play ladder sound
+					playSound(localThis.getClip('ladder'));
+					break;
+				case 'down3':
+					mazeTranslateElement.css({'transition':''});
+					mazehtmlui.renderMapCursor(maze.grid[pZ][pY][pX], pDir);
+					animationState = false;
+					// Update the visit flag for this cell.
+					nextCell = maze.grid[pZ][pY][pX];
+					break;
+				case 'down':
+					// Update the visit flag for this cell.
+					nextCell = maze.grid[pZ][pY][pX];
+					// No more animations.
+					animationState = false;
+					break;
+				case 'door':
+					// Update the door for this cell.
+					nextCell = maze.grid[pZ][pY][pX];
+					// Also update the door from the other side.
+					lastCell = maze.getNextCell(nextCell, pDir);
+					// No more animations.
+					animationState = false;
+				default: //everything else
+					// No more animations.
+					animationState = false;
+			}
+			if (nextCell) { 
+				nextCell.play.visited = true;
+				mazehtmlui.renderMapCell(nextCell); 
+				mazehtmlui.renderMapCursor(nextCell, pDir);
+			}
+			if (lastCell) { 
+				mazehtmlui.renderMapCursor(lastCell); 
+			}
+			
+			// If there are no more animations, then process activity at this cell.
+			if (!animationState && nextCell) {
+				// Check for items
+				if (nextCell.data.item.key && ! nextCell.play.item.key) {
+					// Add this key to the keychain.
+					pKeys.push(nextCell.data.item.key);
+					// Flag this key as collected.
+					nextCell.play.item.key = true;
+					// Hide the object in the maze.
+					const keyHtml = nextCell.html.contents.children('.key');
+					keyHtml.hide();
+					// Add the key to the player's inventory.
+					const key = nextCell.data.item.key;
+					const keyObj = localThis.keyList[key];					
+					const inv = $('<div>').addClass('inventory').text(keyObj.initials);
+					inv.prepend($('<img>').addClass('inventory').attr('src',keyObj.invsrc)).attr('style',keyObj.css);
+					$('#inventory').append(inv);
+					// Display a notice.
+					const alert = $('<div>').addClass('alertTop textWindow').text(`You have found ${keyObj.name}.`);
+					alertTimeout = setTimeout(function () {
+						alert.remove();
+					}, 5000);
+					mazeElement.append(alert);
+					// Play pickup sound.
+					playSound(localThis.getClip('pickup'));
+				}		
+				// Now process keypresses. 
+				const keys = Object.keys(keyPressed);
+				if (keys.length == 1) {
+					// Process the remianing key.
+					processKeyPress(keys[0]);
+				}				
+			}
+			return !animationState;
+		}
+
+		// Initialize our starting cell.
+		maze.grid[pZ][pY][pX].play.visited = true;
+
+		// Attach the current floor elements to the UI.
+		if (this.mapList) {
+			this.mapList.remove();
+		}
+		mapElement.prepend(mapHtml[pZ]);
+		mazeTranslateElement.prepend(mazeHtml[pZ]);
+
+		// Set initial position.
+		mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
+		mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
+		this.setItemHtmlRotation(pDeg);
+		hideOutOfRangeCells(pX, pY, pZ, viewRange);
+
+		// Clean up final map.
+		this.renderMap();
+		this.renderMapCursor(maze.grid[pZ][pY][pX], pDir);
+		
+		// Stop propogation of transitionend by cell contents up the DOM.
+		// This breaks keypress handling.
+		$('.contents').children().on('transitionend', stopPropagation);
+
+		// Doors are a special case. Stop on all door objects except door_a.
+		// This is handled now in the open functions.
+		//$('.door').filter(':not(.door_a)').on('transitionend', stopPropagation);
+
+		$('body').on('keydown.game', function(event) {
+			keyPressed[event.key] = true;
+			eventQueue.push('keydown');
+		}).on('keyup.game', function(event) {
+			if (keyPressed[event.key]) {
+				delete keyPressed[event.key];
+			}
+			eventQueue.push('keyup');
+		}).on('transitionend.game', function (event) {
+			eventQueue.push('animationStop');
+			event.stopImmediatePropagation();	
+		});
+
+		var [mousedown, mouseup] = navigator.maxTouchPoints > 0 ? ['touchstart','touchend touchmove'] : ['mousedown','mouseup mouseout'] ;
+
+		$('#touchNav .touchNav').on(mousedown, function (event){
+			const map = {
+				touchFwd: 'ArrowUp',
+				touchBack: 'ArrowDown',
+				touchLeft: 'ArrowLeft',
+				touchRight: 'ArrowRight',
+				touchUp: 'PageUp',
+				touchDown: 'PageDown',
+			};
+			const id = $(event.target).attr('id');
+			event.stopImmediatePropagation();
+			if (id == 'touchHide') {
+				const touchNav = $('#touchNav');		
+				var opacity = touchNav.css('opacity');
+				opacity = opacity != '1' ? '1' : '0';
+				touchNav.css('opacity', opacity);
+				$('#touchShow').remove();
+				return;
+			}
+			keyPressed[map[id]] = true;
+			eventQueue.push('keydown');
+		}).on(mouseup, function (event){
+			const map = {
+				touchFwd: 'ArrowUp',
+				touchBack: 'ArrowDown',
+				touchLeft: 'ArrowLeft',
+				touchRight: 'ArrowRight',
+				touchUp: 'PageUp',
+				touchDown: 'PageDown',
+			};
+			const id = $(event.target).attr('id');
+			console.log(`${id}.${event.type}`);
+			if (event.type == 'touchmove'){
+				const touch = event.touches[0];
+				if (event.target === document.elementFromPoint(touch.pageX,touch.pageY)) {
+					//Have not left.
+					return;
+				}
+			}
+			if (map[id] && keyPressed[map[id]]) {
+				delete keyPressed[map[id]];
+			}
+			eventQueue.push('keyup');
+		});
+
+		this.rootNode.on('cut copy', function(e) {
+			e.preventDefault();
+			return false;
+		});
+
+		this.gameLoopThread = setInterval(gameLoop, 100);
+	}
+	
+	showAllMaps() {
+		for (const html of this.mapHtml) {
+			$('body').append(html);
+		}
+	}
+
+	setGameOver(state) {
+		this.gameOver = state;
+	}
+
+	isGameOver() {
+		return this.gameOver == true;
+	}
+
+	removeGameUi(state) {
+		clearInterval(this.gameLoopThread);
+		this.gameLoopThread = null;
+		setMusic(null);
+		this.rootNode.empty();
+
+		// Remove triggers on body tag (or else...)
+		$('body').off('keydown.game').off('keyup.game').off('transitionend.game');
+
+		// Clean up all dynamic CSS (or else...)
+		for (const [name, rule] of Object.entries(this.cssRules)) {
+			for (var i=0;i<this.styleSheet.cssRules.length;++i){
+				if (Object.is(this.styleSheet.cssRules.item(i), rule)) {
+					this.styleSheet.deleteRule(i);
+					break
+				}
+			}
+		}
+
+		this.helpFxn(state);
+	}
+}
