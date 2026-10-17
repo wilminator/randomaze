@@ -68,7 +68,7 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
 .key {/*background-image:url(../img/contents/key/0.png);*/}
 
 #touchNav { position: absolute; width: 100%; height: 100%; opacity: 0%;}
-.touchNav {position:absolute;background-color: #FFFFFF10; color: white; font:5vmin BarcadeBrawl; text-align: center; justify-content: center; display: flex; align-items: center;border: 0.5vmin white solid;}
+.touchNav {position:absolute; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;background-color: #FFFFFF10; color: white; font:5vmin BarcadeBrawl; text-align: center; justify-content: center; display: flex; align-items: center;border: 0.5vmin white solid;}
 #touchFwd { width: 50%; left: 25%; top: 25%; height: 40%;}
 #touchBack { width: 90%; left: 5%; top: 85%; height: 15%;}
 #touchLeft { width: 20%; left: 5%; top: 20%; height: 60%; writing-mode:vertical-lr; transform: rotate(180deg);}

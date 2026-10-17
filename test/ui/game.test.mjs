@@ -32,8 +32,8 @@ test.after(async () => { await browser?.close(); });
 Open the demo. With `script`, that code runs instead of demo.js, so a test can set the game
 up its own way. Returns the page and a list that collects uncaught errors from the page.
 */
-async function openDemo(query, script = null) {
-	const page = await browser.newPage();
+async function openDemo(query, script = null, pageOptions = {}) {
+	const page = await browser.newPage(pageOptions);
 	const errors = [];
 	page.on('pageerror', error => errors.push(error.message));
 	await page.route('https://cdnjs.cloudflare.com/**', route => {
@@ -102,6 +102,38 @@ test('switching away from the window lets go of held keys', async () => {
 	const before = await moves();
 	await page.waitForTimeout(5000);
 	assert.strictEqual(await moves(), before, 'the player stopped turning');
+	await page.close();
+});
+
+/*
+A phone can cancel a touch instead of ending it: a long press that opens the text menu, a
+notification sliding in, a swipe the browser takes as a scroll. The page then gets touchcancel
+and never touchend, so a button held at that moment used to stay pressed for good.
+*/
+test('a cancelled touch lets go of the touch button', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true });
+	const moves = async () => Number((await page.locator('#moves').textContent()).match(/\d+/)[0]);
+	const touch = (type, id) => page.evaluate(([type, id]) => {
+		const target = document.getElementById(id);
+		const box = target.getBoundingClientRect();
+		const point = new Touch({ identifier: 1, target, clientX: box.left + 5, clientY: box.top + 5 });
+		const touches = type == 'touchstart' ? [point] : [];
+		target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true,
+			touches, targetTouches: touches, changedTouches: [point] }));
+	}, [type, id]);
+	// Hold Right: the player keeps turning.
+	await touch('touchstart', 'touchRight');
+	await page.waitForFunction(() => /Moves: [1-9]/.test(document.querySelector('#moves').textContent));
+	await touch('touchcancel', 'touchRight');
+	// Same timing as the blur test above: let the turn in progress finish, then expect quiet.
+	await page.waitForTimeout(1500);
+	const before = await moves();
+	await page.waitForTimeout(5000);
+	assert.strictEqual(await moves(), before, 'the player stopped turning');
+	// And the other buttons still work: one stuck button used to block them all.
+	await touch('touchstart', 'touchLeft');
+	await page.waitForFunction(n => Number(document.querySelector('#moves').textContent.match(/\d+/)[0]) > n, before);
+	await touch('touchend', 'touchLeft');
 	await page.close();
 });
 
