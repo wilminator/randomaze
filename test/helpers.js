@@ -45,4 +45,4 @@ function params(type, seed = null) {
 
 const dailySeed = vm.runInContext('dailySeed', ctx);
 
-module.exports = { Maze, emptyMaze, openBoth, openOneWay, opposite, generate, params, dailySeed };
+module.exports = { ctx, Maze, emptyMaze, openBoth, openOneWay, opposite, generate, params, dailySeed };
