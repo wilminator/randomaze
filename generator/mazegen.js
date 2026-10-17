@@ -1374,48 +1374,94 @@ class Maze {
 
 		Returns {solvable, trapped, exits}. exits lists the moves [cell, dir] that lead from a
 		state that can still win into a trapped one: the "point of no return" moves.
+
+		Large mazes can have hundreds of thousands of states, so this keeps them in plain arrays
+		of numbers rather than one object per state. A state is its position in those arrays.
 		*/
 		const dirs = ['N','S','E','W','U','D'];
-		// Keys are stored as bits of a BigInt so a set of keys is a single value.
-		const keyBit = (key) => 1n << BigInt(key);
-		const pickUp = (cell, keys) => cell.data.item.key ? keys | keyBit(cell.data.item.key) : keys;
-		const index = new Map(this.cellList.map((cell, i) => [cell, i]));
-		const stateId = (cell, keys) => `${index.get(cell)}:${keys}`;
+		const cells = this.cellList;
+		const index = new Map(cells.map((cell, i) => [cell, i]));
 
-		// 1. Breadth-first search forward over states.
-		const states = new Map();
-		const first = {cell: startCell, keys: pickUp(startCell, 0n), entries: []};
-		states.set(stateId(first.cell, first.keys), first);
-		const queue = [first];
-		for (var q = 0; q < queue.length; ++q) {
-			const state = queue[q];
-			// Standing at the exit means the player can walk out and win.
-			if (state.cell === endCell) { continue; }
-			for (const dir of dirs) {
-				const wall = state.cell.data[dir];
-				const nextCell = this.getNextCell(state.cell, dir);
+		// Give each key lying in the maze its own bit, so a set of keys is a single number.
+		// Past 30 keys a number runs out of bits, so fall back to a BigInt (slower, never seen yet).
+		const keyBits = new Map();
+		cells.forEach(cell => { if (cell.data.item.key && !keyBits.has(cell.data.item.key)) { keyBits.set(cell.data.item.key, keyBits.size); } });
+		const big = keyBits.size > 30;
+		const noKeys = big ? 0n : 0;
+		const bitOf = (key) => keyBits.has(key) ? (big ? 1n << BigInt(keyBits.get(key)) : 1 << keyBits.get(key)) : noKeys;
+		const pickUp = cells.map(cell => cell.data.item.key ? bitOf(cell.data.item.key) : noKeys);
+
+		// The moves out of each cell: [direction number, next cell, the key bit it needs (or 0 if none)].
+		// A locked door whose key is nowhere in the maze can never open, so it is left out.
+		const moves = cells.map(cell => {
+			const list = [];
+			dirs.forEach((dir, d) => {
+				const wall = cell.data[dir];
+				const nextCell = this.getNextCell(cell, dir);
+				if (!nextCell) { return; }
 				// Same rule as the game: open, unlocked, or a door we hold the key for.
-				if (!nextCell || !(wall === null || wall === 1 || (wall > 1 && (state.keys & keyBit(wall))))) { continue; }
-				const keys = pickUp(nextCell, state.keys);
-				const id = stateId(nextCell, keys);
-				var next = states.get(id);
-				if (!next) {
-					next = {cell: nextCell, keys: keys, entries: []};
-					states.set(id, next);
-					queue.push(next);
-				}
-				next.entries.push([state, dir]);
+				if (wall === null || wall === 1) { list.push([d, index.get(nextCell), noKeys]); }
+				else if (wall > 1 && keyBits.has(wall)) { list.push([d, index.get(nextCell), bitOf(wall)]); }
+			});
+			return list;
+		});
+
+		// 1. Breadth-first search forward over states. stateCell and stateKeys describe each state;
+		// every move between states is an edge, kept so step 2 can walk them backwards.
+		// ids[cell] finds a state from the keys held in that cell.
+		const stateCell = [], stateKeys = [], ids = cells.map(() => new Map());
+		const edgeFrom = [], edgeTo = [], edgeDir = [];
+		const addState = (cell, keys) => {
+			const known = ids[cell];
+			var state = known.get(keys);
+			if (state === undefined) {
+				state = stateCell.length;
+				known.set(keys, state);
+				stateCell.push(cell);
+				stateKeys.push(keys);
+			}
+			return state;
+		};
+		const start = index.get(startCell), exit = index.get(endCell);
+		addState(start, pickUp[start]);
+		// The states list doubles as the queue: states are added in the order they are found.
+		for (var state = 0; state < stateCell.length; ++state) {
+			const cell = stateCell[state];
+			// Standing at the exit means the player can walk out and win.
+			if (cell === exit) { continue; }
+			const keys = stateKeys[state];
+			for (const [d, nextCell, need] of moves[cell]) {
+				if (need && !(keys & need)) { continue; }
+				edgeFrom.push(state);
+				edgeTo.push(addState(nextCell, keys | pickUp[nextCell]));
+				edgeDir.push(d);
 			}
 		}
+		const count = stateCell.length;
+
+		// List the edges into each state, in the order they were found: all edges into state t
+		// are intoEdge[intoStart[t]] up to intoEdge[intoStart[t + 1]].
+		const intoStart = new Int32Array(count + 1);
+		edgeTo.forEach(t => ++intoStart[t + 1]);
+		for (var t = 0; t < count; ++t) { intoStart[t + 1] += intoStart[t]; }
+		const intoEdge = new Int32Array(edgeTo.length);
+		const fill = intoStart.slice(0, count);
+		edgeTo.forEach((t, e) => { intoEdge[fill[t]++] = e; });
 
 		// 2. Walk backward from the winning states.
-		const canWin = new Set();
-		const stack = [...states.values()].filter(state => state.cell === endCell);
-		stack.forEach(state => canWin.add(state));
+		const canWin = new Uint8Array(count);
+		const stack = [];
+		for (var t = 0; t < count; ++t) {
+			if (stateCell[t] === exit) { canWin[t] = 1; stack.push(t); }
+		}
+		var winners = stack.length;
 		while (stack.length > 0) {
-			for (const [prior, dir] of stack.pop().entries) {
-				if (!canWin.has(prior)) {
-					canWin.add(prior);
+			const t = stack.pop();
+			for (var i = intoStart[t]; i < intoStart[t + 1]; ++i) {
+				const prior = edgeFrom[intoEdge[i]];
+				if (!canWin[prior]) {
+					canWin[prior] = 1;
+					++winners;
 					stack.push(prior);
 				}
 			}
@@ -1423,13 +1469,14 @@ class Maze {
 
 		// 3. Collect the moves that cross from a winnable state into a trapped one.
 		const exits = [];
-		for (const state of states.values()) {
-			if (canWin.has(state)) { continue; }
-			for (const [prior, dir] of state.entries) {
-				if (canWin.has(prior)) { exits.push([prior.cell, dir]); }
+		for (var t = 0; t < count; ++t) {
+			if (canWin[t]) { continue; }
+			for (var i = intoStart[t]; i < intoStart[t + 1]; ++i) {
+				const e = intoEdge[i];
+				if (canWin[edgeFrom[e]]) { exits.push([cells[stateCell[edgeFrom[e]]], dirs[edgeDir[e]]]); }
 			}
 		}
-		return {solvable: canWin.has(first), trapped: states.size - canWin.size, exits: exits};
+		return {solvable: canWin[0] == 1, trapped: count - winners, exits: exits};
 	}
 
 	removeOneWayTraps(startCell, endCell) {
