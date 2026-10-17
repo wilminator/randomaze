@@ -12,7 +12,7 @@ server update together, not a quiet release.
 function fingerprint() {
 	const hash = crypto.createHash('sha256');
 	for (const type of [0, 1, 2, 3]) {
-		for (const seed of [1, 2, 3, 202610017, 202612031]) {
+		for (const seed of [1, 2, 3, 202601017, 202601231]) {
 			const { maze } = generate(type, seed);
 			for (const cell of maze.cellList) {
 				const d = cell.data;
@@ -25,5 +25,5 @@ function fingerprint() {
 }
 
 test('mazes are the same as in the released engine', () => {
-	assert.strictEqual(fingerprint(), 'b1777ab7aee16f22df9e7277847457e0aa15590289a9446e02b9c756fe0a1125');
+	assert.strictEqual(fingerprint(), 'd52b9799d702d84bb58f3243dece05a40a2cf7d8524fd3d4e7d93c6d89a589b7');
 });

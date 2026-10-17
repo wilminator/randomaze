@@ -89,7 +89,7 @@ test('a game must end exactly when the player walks out', () => {
 
 test('generated mazes of every type can be replayed, and replaying leaves the maze unchanged', () => {
 	for (const type of [0, 1, 2, 3]) {
-		for (const seed of [1, 2, 3, 202610017]) {
+		for (const seed of [1, 2, 3, 202601017]) {
 			const { maze } = generate(type, seed);
 			const actions = solve(maze);
 			const first = replayGame(maze, actions);
