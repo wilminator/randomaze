@@ -222,3 +222,47 @@ test('mazes that used to place keys behind their doors', () => {
 		assertNoTraps(type, seed);
 	}
 });
+/*
+findTraps keeps its states in arrays of numbers for speed. tools/check_mazes_lib.js has a
+separate, plain version of the same search. Both must agree on every maze.
+*/
+test('findTraps agrees with the independent checker', () => {
+	const { countTraps } = require('../tools/check_mazes_lib.js');
+	let trapped = 0;
+	for (let type = 0; type < 4; type++) {
+		for (let seed = 1; seed <= 10; seed++) {
+			const maze = generate(type, seed).maze;
+			const start = maze.entranceList[0].cell, exit = maze.entranceList.at(-1).cell;
+			// A finished maze has no traps, so make some: turn every 7th open east wall one-way.
+			maze.cellList.forEach((cell, i) => { if (i % 7 == 0 && cell.data.E === null) { cell.data.E = 0; } });
+			const expected = countTraps(maze);
+			const result = maze.findTraps(start, exit);
+			assert.strictEqual(result.solvable, expected.solvable, `type ${type} seed ${seed}`);
+			assert.strictEqual(result.trapped, expected.trapped, `type ${type} seed ${seed}`);
+			trapped += result.trapped;
+		}
+	}
+	assert.ok(trapped > 0, 'some of the test mazes had traps');
+});
+
+/*
+A set of keys is stored as the bits of one number, which only has room for 30 keys.
+With more, findTraps switches to a BigInt. This corridor has 40 locked doors, each key
+lying just before its door:  S - k3 | k4 | k5 | ... | k42 | X
+*/
+test('findTraps handles more keys than fit in a number', () => {
+	const length = 42;
+	const maze = emptyMaze(1, length);
+	for (let c = 0; c < length - 1; ++c) {
+		const key = c + 2;
+		// Cell 0 is the start. Cell c (1 to 40) holds key c+2, and door c+2 is its east wall.
+		openBoth(maze, maze.cell(0, c), 'E', c == 0 ? null : key);
+		if (c > 0) { maze.cell(0, c).data.item.key = key; }
+	}
+	assert.deepStrictEqual(maze.findTraps(maze.cell(0, 0), maze.cell(0, length - 1)).solvable, true);
+	// Move the last key to the exit, behind its own door: now that door can never open.
+	// With too few bits, key 42 would share a bit with an earlier key and open anyway.
+	delete maze.cell(0, length - 2).data.item.key;
+	maze.cell(0, length - 1).data.item.key = length;
+	assert.deepStrictEqual(maze.findTraps(maze.cell(0, 0), maze.cell(0, length - 1)).solvable, false);
+});
