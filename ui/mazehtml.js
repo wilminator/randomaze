@@ -1042,7 +1042,9 @@ PgDn Descend<br />
 			Object.keys(keyPressed).forEach(key => delete keyPressed[key]);
 		});
 
-		var [mousedown, mouseup] = navigator.maxTouchPoints > 0 ? ['touchstart','touchend touchmove'] : ['mousedown','mouseup mouseout'] ;
+		// A phone can cancel a touch (a long press, a notification, a swipe the browser takes
+		// as a scroll) and send touchcancel in place of touchend; it must let go of the button too.
+		var [mousedown, mouseup] = navigator.maxTouchPoints > 0 ? ['touchstart','touchend touchcancel touchmove'] : ['mousedown','mouseup mouseout'] ;
 
 		$('#touchNav .touchNav').on(mousedown, function (event){
 			const map = {
@@ -1055,6 +1057,10 @@ PgDn Descend<br />
 			};
 			const id = $(event.target).attr('id');
 			event.stopImmediatePropagation();
+			// Keep the browser from turning a held button into a text selection or a scroll.
+			if (event.type == 'touchstart') {
+				event.preventDefault();
+			}
 			if (id == 'touchHide') {
 				const touchNav = $('#touchNav');		
 				var opacity = touchNav.css('opacity');
@@ -1077,8 +1083,10 @@ PgDn Descend<br />
 			const id = $(event.target).attr('id');
 			console.log(`${id}.${event.type}`);
 			if (event.type == 'touchmove'){
-				const touch = event.touches[0];
-				if (event.target === document.elementFromPoint(touch.pageX,touch.pageY)) {
+				// changedTouches holds the finger that moved; touches[0] could be another finger.
+				// elementFromPoint wants coordinates in the window, not the page.
+				const touch = event.changedTouches[0];
+				if (event.target === document.elementFromPoint(touch.clientX,touch.clientY)) {
 					//Have not left.
 					return;
 				}
