@@ -20,13 +20,14 @@ Page Up / Page Down climb ladders.
 
 | Folder | What it is | Needs |
 |---|---|---|
-| `generator/` | Builds the maze: layout, doors, keys, ladders, one-way walls, and the checks that keep every maze winnable. Plain JavaScript, no DOM. | [seedrandom](https://github.com/davidbau/seedrandom) |
+| `generator/` | Builds the maze: layout, doors, keys, ladders, one-way walls, and the checks that keep every maze winnable. `mazeplayer.js` holds the rules of play, so a server can replay a game. Plain JavaScript, no DOM. | [seedrandom](https://github.com/davidbau/seedrandom) |
 | `ui/` | Draws a maze in 3D with CSS transforms, the map, the inventory, and handles play. `music.js` plays sounds; `title.js` is the colour-cycling title effect. | jQuery (slim is fine), seedrandom, [Font Awesome Free](https://fontawesome.com) icons |
 | `demo/` | A complete small game using only the files above. | |
 | `test/`, `tools/` | Generator tests, and a checker that builds thousands of mazes looking for crashes and traps. | Node 18+ |
 
 The files are classic browser scripts (no modules). Load them in this order:
-`generator/mazeutil.js`, `generator/mazegen.js`, `generator/mazeparams.js`, then
+`generator/mazeutil.js`, `generator/mazegen.js`, `generator/mazeparams.js`,
+`generator/mazeplayer.js`, then
 `ui/music.js`, `ui/mazehtml.js`. `demo/index.html` shows the whole setup.
 
 ## Using the generator
@@ -48,6 +49,24 @@ If a side is open but the neighbour's matching side is not, that is a one-way wa
 
 `maze.findTraps(startCell, exitCell)` (pass `maze.entranceList[0].cell` and the last entrance's `cell`) reports whether a maze is solvable and whether a player
 could get stuck; `generateDoors()` already repairs any maze where they could.
+
+## Checking a finished game
+
+`MazePlayer` in `generator/mazeplayer.js` holds the rules of play: what each action does,
+which count as moves, and when keys are picked up. The UI uses it for every key press,
+and records each move as one letter: `F` forward or open a door, `B` back, `L`/`R` turn,
+`U`/`D` ladder. Bumping into a wall is free and isn't recorded, so the move count is
+always the length of that string.
+
+When the player wins, the state passed to the `generateGameUi` callback carries it:
+`{state: 'win', moves, cells, actions, times}`, where `times[i]` is when move `i` was
+made, in milliseconds since the game began. A server can rebuild the same maze from its
+type and seed and replay the game, without trusting the page's move count:
+
+```js
+const result = replayGame(maze, actions);
+// {valid: true, moves: 57}, or {valid: false, reason: 'action 12 (F) does nothing'}
+```
 
 ## Using the UI
 

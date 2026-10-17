@@ -12,6 +12,10 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+
+const require = createRequire(import.meta.url);
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const demoUrl = pathToFileURL(`${root}demo/index.html`).href;
@@ -136,4 +140,59 @@ test('music that the browser will not autoplay does not raise an error', async (
 	await page.waitForFunction(() => !currentmusic.paused);
 	assert.deepStrictEqual(errors, []);
 	await page.close();
+});
+
+/*
+Press keys in the real game and check it records exactly what the rules say, so a server
+replaying the recording gets the same result. `keys` is a string of actions (F B L R U D);
+bumps are pressed too, and must not be recorded.
+*/
+const pressFor = {F: 'ArrowUp', B: 'ArrowDown', L: 'ArrowLeft', R: 'ArrowRight', U: 'PageUp', D: 'PageDown'};
+async function playKeys(page, keys) {
+	const idle = () => page.waitForFunction(() => !game.mazehtml.isBusy(), null, {polling: 10});
+	for (const key of keys) {
+		await idle();
+		const before = await page.evaluate(() => game.mazehtml.player.moves);
+		await page.keyboard.down(pressFor[key]);
+		// Hold the key until the game takes it, or briefly for a bump.
+		await page.waitForFunction(n => game.mazehtml.isBusy() || game.mazehtml.player.moves != n, before, {polling: 10, timeout: 300}).catch(() => {});
+		await page.keyboard.up(pressFor[key]);
+		if (await page.evaluate(() => game.mazehtml.player.won)) break;
+	}
+	// After a win the game stays busy until it clears itself away.
+	if (!await page.evaluate(() => game.mazehtml.player.won)) await idle();
+	return page.evaluate(() => ({actions: game.mazehtml.player.actions, times: game.mazehtml.player.times, won: game.mazehtml.player.won,
+		shown: document.querySelector('#moves').textContent}));
+}
+
+test('the game records every move, and the recording replays to the same result', async () => {
+	const { solve, load } = require('../../tools/check_mazes_lib.js');
+	const ctx = load(root);
+	const [type, seed] = [1, 202601015];
+	const [, maze] = vm.runInContext(`build(${type}, ${seed})`, ctx);
+	const player = new (vm.runInContext('MazePlayer', ctx))(maze);
+	// Wander about: turns, bumps into walls and locked doors, backing into the way in.
+	let wander = '', n = 7;
+	for (let i = 0; i < 40; ++i) { n = (n * 48271) % 2147483647; wander += 'FFFBLRUD'[n % 8]; }
+	for (const key of wander) player.act(key);
+
+	const { page, errors } = await openDemo('', gameScript(type, seed, 11));
+	const wandered = await playKeys(page, wander);
+	assert.strictEqual(wandered.actions, player.actions, 'the page recorded what the rules allow');
+	assert.strictEqual(wandered.shown, `Moves: ${player.moves}`);
+	await page.close();
+
+	// A full game from the start: the page wins, and the server-side replay agrees.
+	const solution = solve(maze);
+	const { page: page2 } = await openDemo('', gameScript(type, seed, 11));
+	const won = await playKeys(page2, solution);
+	assert.strictEqual(won.won, true);
+	assert.strictEqual(won.actions, solution);
+	assert.strictEqual(won.times.length, solution.length, 'every move has a time');
+	assert.ok(won.times.every((t, i) => i == 0 || t >= won.times[i - 1]), 'times only go forward');
+	const replay = vm.runInContext('replayGame', ctx)(maze, won.actions);
+	assert.strictEqual(replay.valid, true);
+	assert.strictEqual(replay.moves, solution.length);
+	assert.deepStrictEqual(errors, []);
+	await page2.close();
 });

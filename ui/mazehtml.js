@@ -86,6 +86,8 @@ const openDoorFxns = {
 };
 
 const gameDebug = false; // allow wall passthrough
+// Which game action each key (or touch button, see playGame) stands for.
+const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D'};
 
 class MazeHtml{
 	constructor(seed, maze) {
@@ -657,11 +659,18 @@ PgDn Descend<br />
 		var [pZ, pY, pX] = maze.entranceList[0].cell.loc;
 		var pDir = opposite[maze.entranceList[0].dir];
 		var pDeg = { 'E': 90, 'W': -90, 'N': 0, 'S': 180}[pDir];
-		var pKeys = [1];
 		var animationState = false;
 		var mayProcessAction = true;
 		var alertTimeout = null;
-		var moves = 0;
+		// The game's rules: where the player is, keys held, moves made.
+		const player = new MazePlayer(maze, gameDebug);
+		this.player = player;
+		// True while an action is animating and the next key press has to wait.
+		this.isBusy = () => !!animationState || !mayProcessAction;
+		// A key picked up by the last action, shown when its animation ends.
+		var pendingKey = null;
+		// Each move's time is recorded as milliseconds since the game began.
+		const startTime = Date.now();
 		const eventQueue = [];
 		const keyPressed = {};
 		var gameLoopThread = null;
@@ -671,8 +680,6 @@ PgDn Descend<br />
 		// Local this variable
 		const localThis = this;
 		
-		// This is the list of actions taken.
-		var actions=[];
 
 		function hideOutOfRangeCells(cx, cy, cz, range){
 			for(var y = 0; y < maze.rows; ++y){
@@ -721,149 +728,85 @@ PgDn Descend<br />
 		}
 
 		function processKeyPress(key) {
-			// Get the current cell.
-			const cell = maze.grid[pZ][pY][pX];	
-			switch (key) {
-				case 'ArrowUp':
-					if (cell.data[pDir] === null || (cell.data[pDir] >0 && cell.play[pDir]) || (gameDebug && !cell.html[pDir].hasClass('outside'))) {
-						// Is this leaving the maze?
-						if (cell.html[pDir].hasClass('outside')) {
-							// We are trying to leave. See if this is the last entrance.
-							if (cell !== maze.entranceList[maze.entrances - 1].cell) {
-								// Nope. 
-								const fauxWall = cell.html[pDir];
-								if (fauxWall.children().length == 0) {
-									// And the walls come tumbling down!
-									const wallCss = localThis.wallTiles[pZ];
-									const wall = $('<div>').addClass(`offset tile ${wallCss} trapEntrance`).css('transform', 'translate3d(-50vmin, -150vmin, 0vmin)');
-									fauxWall.append(wall);
-									// Pop onto the event queue or it will not animate.
-									eventQueue.push('trapEntrance');
-									//wall.css('transform', 'translate3d(-50vmin, -50vmin, 0vmin)');						
-									// Set the state.
-									//animationState='trapEntrance';
-									moves += 1
-									return false;
-								}						
-								// Else play sad sound.						
-								return true;
-							}
-							else {
-								gameOver = {state:'win', moves:moves + 1, cells:maze.floors * maze.columns * maze.rows};
-							}
-						}
-						// Move
-						pX += dx[pDir];
-						pY += dy[pDir];
-						// Update the GUI
-						hideOutOfRangeCells(pX, pY, pZ, viewRange);
-						mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
-						animationState = 'forward';
-						moves += 1
-						return false; // action in progress
-					}
-					if (cell.data[pDir] >0) {
-						if (pKeys.includes(cell.data[pDir])){
-							const door = cell.html[pDir];
-							cell.play[pDir] = true;
-							const nextCell = maze.getNextCell(cell, pDir);
-							const oDoor = nextCell.html[opposite[pDir]];
-							nextCell.play[opposite[pDir]] = true;
-							const anim = localThis.keyList[cell.data[pDir]].open;
-							openDoorFxns[anim].open(door, oDoor);
-							/*
-							door.children('.door_a').addClass('door_open_left');
-							door.children('.door_b').addClass('door_open_right');
-							oDoor.children('.door_a').addClass('door_open_left');
-							oDoor.children('.door_b').addClass('door_open_right');
-							*/
-							// Open door
-							animationState = 'door';
-							moves += 1
-							// Play the sound
-							playSound(localThis.getClip('door'));
-							return false; // action in progress
-						}
-						else {
-							// Play no key 
-						}
-					}
-					else {
-						//play bump
-					}
-					break;
-				case 'ArrowDown':
-					const oDir = opposite[pDir];
-					if ((cell.data[oDir] === null && !cell.html[oDir].hasClass('outside')) || (cell.data[oDir] >0 && cell.play[oDir])) {
-						// Move
-						pX -= dx[pDir];
-						pY -= dy[pDir];
-						// Update the GUI
-						hideOutOfRangeCells(pX, pY, pZ, viewRange);
-						mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
-						animationState = 'backward';
-						moves += 1
-						return false; // action in progress
-					}
-					else {
-						//play bump
-					}
-					break;
-				case 'ArrowLeft':
-					pDir = turnLeft[pDir];
-					pDeg -= 90;
-					// Update the GUI
-					mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
-					mazehtmlui.setItemHtmlRotation(pDeg);
-					animationState = 'left';
-					moves += 1
-					return false; // action in progress
-				case 'ArrowRight':
-					pDir = turnRight[pDir];
-					pDeg += 90;
-					// Update the GUI
-					mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
-					mazehtmlui.setItemHtmlRotation(pDeg);
-					animationState = 'right';
-					moves += 1
-					return false; // action in progress
-				case 'PageUp':
-					if (pZ < maze.floors - 1 && cell.data.U === null) {
-						// Hide the map cursor
-						mazehtmlui.renderMapCursor(cell);
-						// Move
-						++pZ;
-						// Update the UI
-						animationState = 'up';
-						mazeTranslateElement.css({'transition':'transform cubic-bezier(0.36, 0, 0.66, -0.56) 1500ms','transform':`translate3d(${-100*pX}vmin, 100vmin, ${-100*pY}vmin)`});
-						moves += 1
-						// Play ladder sound
-						playSound(localThis.getClip('ladder'));
-						return false; // action in progress
-					}
-					break;
-				case 'PageDown':
-					if (pZ > 0 && cell.data.D === null) {
-						// Hide the map cursor
-						mazehtmlui.renderMapCursor(cell);
-						// Move
-						--pZ;
-						// Update the UI
-						animationState = 'down';
-						mazeTranslateElement.css({'transition':'transform cubic-bezier(0.36, 0, 0.66, -0.56) 1500ms','transform':`translate3d(${-100*pX}vmin, -100vmin, ${-100*pY}vmin)`});
-						moves += 1
-						// Play ladder sound
-						playSound(localThis.getClip('ladder'));
-						return false; // action in progress
-					}
-					break;
+			const action = keyActions[key];
+			if (!action) {
+				return true;
 			}
-			return true; // May process more actions
+			// Get the current cell.
+			const cell = maze.grid[pZ][pY][pX];
+			// The rules decide what this key does. null means a bump, which costs nothing.
+			const result = player.act(action, Date.now() - startTime);
+			if (!result) {
+				return true; // May process more actions
+			}
+			// A key picked up here is shown once the animation ends.
+			pendingKey = result.pickedUp || null;
+			switch (result.type) {
+				case 'trap':
+					// And the walls come tumbling down!
+					const fauxWall = cell.html[pDir];
+					const wallCss = localThis.wallTiles[pZ];
+					const wall = $('<div>').addClass(`offset tile ${wallCss} trapEntrance`).css('transform', 'translate3d(-50vmin, -150vmin, 0vmin)');
+					fauxWall.append(wall);
+					// Pop onto the event queue or it will not animate.
+					eventQueue.push('trapEntrance');
+					return false;
+				case 'win':
+					gameOver = {state:'win', moves:player.moves, cells:maze.floors * maze.columns * maze.rows, actions:player.actions, times:player.times};
+					// Walk out through the exit.
+					pX += dx[pDir];
+					pY += dy[pDir];
+					hideOutOfRangeCells(pX, pY, pZ, viewRange);
+					mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
+					animationState = 'forward';
+					return false; // action in progress
+				case 'door':
+					const door = cell.html[pDir];
+					cell.play[pDir] = true;
+					const nextCell = maze.getNextCell(cell, pDir);
+					const oDoor = nextCell.html[opposite[pDir]];
+					nextCell.play[opposite[pDir]] = true;
+					const anim = localThis.keyList[result.key].open;
+					openDoorFxns[anim].open(door, oDoor);
+					// Open door
+					animationState = 'door';
+					// Play the sound
+					playSound(localThis.getClip('door'));
+					return false; // action in progress
+				case 'turn':
+					pDir = player.dir;
+					pDeg += action == 'L' ? -90 : 90;
+					// Update the GUI
+					mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
+					mazehtmlui.setItemHtmlRotation(pDeg);
+					animationState = action == 'L' ? 'left' : 'right';
+					return false; // action in progress
+			}
+			// A move: forward, back, or a ladder.
+			if (action == 'U' || action == 'D') {
+				// Hide the map cursor
+				mazehtmlui.renderMapCursor(cell);
+				pZ = player.z;
+				// Update the UI
+				const lift = action == 'U' ? 100 : -100;
+				animationState = action == 'U' ? 'up' : 'down';
+				mazeTranslateElement.css({'transition':'transform cubic-bezier(0.36, 0, 0.66, -0.56) 1500ms','transform':`translate3d(${-100*pX}vmin, ${lift}vmin, ${-100*pY}vmin)`});
+				// Play ladder sound
+				playSound(localThis.getClip('ladder'));
+				return false; // action in progress
+			}
+			pX = player.x;
+			pY = player.y;
+			// Update the GUI
+			hideOutOfRangeCells(pX, pY, pZ, viewRange);
+			mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
+			animationState = action == 'F' ? 'forward' : 'backward';
+			return false; // action in progress
 		}
 
 		function processEndAnimation() {
 			// Update the move counter.	
-			$('#moves').text(`Moves: ${moves}`);
+			$('#moves').text(`Moves: ${player.moves}`);
 			var lastCell, nextCell;
 			switch (animationState) {
 				case 'forward':
@@ -963,11 +906,10 @@ PgDn Descend<br />
 			// If there are no more animations, then process activity at this cell.
 			if (!animationState && nextCell) {
 				// Check for items
-				if (nextCell.data.item.key && ! nextCell.play.item.key) {
-					// Add this key to the keychain.
-					pKeys.push(nextCell.data.item.key);
-					// Flag this key as collected.
+				if (pendingKey) {
+					// The player already holds it; flag it as collected for the display.
 					nextCell.play.item.key = true;
+					pendingKey = null;
 					// Hide the object in the maze.
 					const keyHtml = nextCell.html.contents.children('.key');
 					keyHtml.hide();
