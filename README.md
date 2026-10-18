@@ -12,7 +12,8 @@ The same seed always builds the same maze, so everyone can play today's maze, or
 
 Open `demo/index.html` in a browser. No build step and no server needed.
 
-Add `?type=2&seed=1234` to the address to pick a maze size (0 to 3) and a seed.
+Add `?type=2&seed=1234` to the address to pick a maze size (0 to 3) and a seed, and `&doors=10`
+to add 10 plain (keyless) doors.
 Arrow keys walk and turn, Up opens a door you have the key for, and
 Page Up / Page Down climb ladders.
 
@@ -39,11 +40,14 @@ const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.row
 	params.doorTypes, params.entrances, params.oneWayWalls);
 maze.generateMaze();   // carve the passages
 maze.generateDoors();  // add locked doors and hide their keys
+maze.generatePlainDoors(10);  // optional: up to 10 doors that need no key
 ```
 
 `maze.grid[floor][row][column]` is a cell. `cell.data.N`, `S`, `E`, `W`, `U` and `D`
 describe each side: `null` is open, `0` is a wall, `1` is a plain door, and `2` or more
-is a door that needs key number N. `cell.data.item.key` is the key lying in that cell.
+is a door that needs key number N. Plain doors (`1`) need no key: the player always holds key 1.
+`generatePlainDoors()` uses its own random stream, so it adds doors without moving anything else,
+and a maze built without it is unchanged. `cell.data.item.key` is the key lying in that cell.
 If a side is open but the neighbour's matching side is not, that is a one-way wall.
 `maze.entranceList[0]` is the start and the last entrance is the exit.
 

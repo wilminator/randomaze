@@ -1287,6 +1287,44 @@ class Maze {
 		this.clearWorkProperty();
 	}
 
+	/*
+	Turns up to `count` open passages into plain doors: doors that need no key (a side of 1).
+	Call it after generateDoors(). Returns how many doors it placed.
+
+	The player always holds key 1 (see MazePlayer), so a plain door opens with one move and can
+	never change whether a maze can be won; findTraps() already treats 1 as open.
+
+	It draws from its own random stream, not the maze's, so it never moves a wall, key or locked
+	door. A maze built without calling this is exactly the same as before it existed, and one
+	built with it is the same maze with some doors added.
+	*/
+	generatePlainDoors(count) {
+		const generateInt = generateIntegerWrapper(new Math.seedrandom(`${this.seed}:plainDoors`));
+		const entranceCells = new Set(this.entranceList.map(e => e.cell));
+		// Every passage open both ways, listed once (looking south and east from each cell).
+		// One-way walls are left alone, and so are the entrance cells, to keep the way in and out clear.
+		const passages = [];
+		for (const cell of this.cellList) {
+			if (entranceCells.has(cell)) continue;
+			for (const dir of ['S', 'E']) {
+				const next = this.getNextCell(cell, dir);
+				if (next && !entranceCells.has(next) && cell.data[dir] === null && next.data[opposite[dir]] === null) {
+					passages.push([cell, dir, next]);
+				}
+			}
+		}
+		// Pick `count` of them at random, without picking one twice.
+		const placed = Math.min(count, passages.length);
+		for (let i = 0; i < placed; ++i) {
+			const pick = i + generateInt(passages.length - i);
+			[passages[i], passages[pick]] = [passages[pick], passages[i]];
+			const [cell, dir, next] = passages[i];
+			cell.data[dir] = 1;
+			next.data[opposite[dir]] = 1;
+		}
+		return placed;
+	}
+
 	mazeFail(startCell, endCell) {
 		/*
 		This function test solves a maze in it's current state.
