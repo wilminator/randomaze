@@ -4,6 +4,7 @@ A minimal game: build a maze from a seed and play it in first person.
 Try demo/index.html?type=2&seed=1234
   type: 0 = daily-sized, 1 = small, 2 = medium, 3 = large (see generator/mazeparams.js)
   seed: any number; leave it out for today's maze. The same seed always builds the same maze.
+  doors: how many plain (keyless) doors to add, e.g. &doors=10. Leave it out for none.
 
 Controls: arrow keys to walk and turn, Page Up / Page Down for ladders, and
 Up arrow at a door to open it if you carry its key.
@@ -33,6 +34,7 @@ function startDemo() {
 	const query = new URLSearchParams(location.search);
 	const type = Number(query.get('type') || 0);
 	const seed = query.get('seed') ? Number(query.get('seed')) : null;
+	const plainDoors = Number(query.get('doors') || 0);
 
 	// The parameters (size, floors, doors...) come from the seed, so one number describes a whole maze.
 	const params = new MazeParameters(type, seed);
@@ -64,7 +66,7 @@ function startDemo() {
 	// The UI calls this for the cog button, and again when it clears itself away after a win.
 	const onMenu = state => {
 		if (state.state === 'win') {
-			const next = `?type=${type}&seed=${Math.floor(Math.random() * 100000)}`;
+			const next = `?type=${type}&seed=${Math.floor(Math.random() * 100000)}${plainDoors ? `&doors=${plainDoors}` : ''}`;
 			$('#gamewindow').html(`<div class="textWindow">You escaped in ${state.moves} moves.<br><br>
 				<a href="${next}" style="color:white">Play another maze</a></div>`);
 		}
@@ -72,6 +74,7 @@ function startDemo() {
 	mazehtml.generateGameUi('gamewindow', onMenu);
 	maze.generateMaze();
 	maze.generateDoors();
+	maze.generatePlainDoors(plainDoors);
 	mazehtml.playGame();
 }
 

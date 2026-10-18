@@ -610,6 +610,18 @@ PgDn Descend<br />
 			.sort((a, b) => a.sort - b.sort)
 			.map(({ value }) => value);
 		this.keyList = {};
+		// Picks how the door for lock number `key` looks and opens, and adds its css.
+		const addDoorStyle = (key, keyObj) => {
+			// Pick the door type for this key.
+			const door = this.doors[this.generateInt(this.doors.length)];
+			// Pick a door function and tag this door with it.
+			keyObj.open = door.tags[this.generateInt(door.tags.length)];
+			// Create the door css
+			const door_name = `door_${key}`;
+			const door_css = this.styleSheet.insertRule(`.${door_name} {${door.css}}`);
+			this.cssRules[door_name] = this.styleSheet.cssRules[door_css];
+			return door_name;
+		};
 		if (keyCells.length > shuffledKeys.length) {
 			console.log(`The maze has ${keyCells.length} keys but only ${shuffledKeys.length} key items were loaded. Reusing items.`);
 		}
@@ -625,14 +637,7 @@ PgDn Descend<br />
 			const keyObj = key == 1 ? {} : Object.assign({}, shuffledKeys[j++ % shuffledKeys.length]);
 			// Store this key data
 			this.keyList[key] = keyObj;
-			// Pick the door type for this key.
-			const door = this.doors[this.generateInt(this.doors.length)];
-			// Pick a door function and tag this door with it.
-			keyObj.open = door.tags[this.generateInt(door.tags.length)];
-			// Create the door css
-			const door_name = `door_${key}`;
-			const door_css = this.styleSheet.insertRule(`.${door_name} {${door.css}}`);
-			this.cssRules[door_name] = this.styleSheet.cssRules[door_css];
+			const door_name = addDoorStyle(key, keyObj);
 			// Check if the door actually needs a key.
 			if (key > 1){
 				// Create the key css
@@ -642,6 +647,14 @@ PgDn Descend<br />
 				const key_css = this.styleSheet.insertRule(`.${key_name} {background-image:url(${keyObj.src}); ${keyObj.css}}`);
 				this.cssRules[key_name] = this.styleSheet.cssRules[key_css];
 			}
+		}
+		// Plain doors (side value 1) open without a key, so no cell holds key 1 and the loop
+		// above never gives them an entry. Give them one, drawn like any other door.
+		// Only mazes that have plain doors get here, so other mazes draw exactly as before.
+		const hasPlainDoors = maze.cellList.some(c => ['N','S','E','W'].some(dir => c.data[dir] === 1));
+		if (hasPlainDoors && !this.keyList[1]) {
+			this.keyList[1] = {initials: ''};
+			addDoorStyle(1, this.keyList[1]);
 		}
 
 

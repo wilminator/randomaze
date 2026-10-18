@@ -51,7 +51,8 @@ async function openDemo(query, script = null, pageOptions = {}) {
 }
 
 // A game set up like the demo, but with only `keyCount` key items and no menu callback.
-function gameScript(type, seed, keyCount) {
+// `plainDoors` asks the generator for that many keyless doors.
+function gameScript(type, seed, keyCount, plainDoors = 0) {
 	return `
 		const params = new MazeParameters(${type}, ${seed});
 		const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
@@ -66,6 +67,7 @@ function gameScript(type, seed, keyCount) {
 		mazehtml.generateGameUi('gamewindow');
 		maze.generateMaze();
 		maze.generateDoors();
+		maze.generatePlainDoors(${plainDoors});
 		mazehtml.playGame();
 		window.game = {maze, mazehtml};
 	`;
@@ -227,4 +229,26 @@ test('the game records every move, and the recording replays to the same result'
 	assert.strictEqual(replay.moves, solution.length);
 	assert.deepStrictEqual(errors, []);
 	await page2.close();
+});
+
+/*
+Plain doors need no key. The UI only made door styles for keys lying in the maze, and no cell
+holds key 1, so drawing a plain door used to crash. Play a full game through plain doors.
+*/
+test('a maze with plain doors draws, and a game through them wins', async () => {
+	const { solve, load } = require('../../tools/check_mazes_lib.js');
+	const ctx = load(root);
+	const [type, seed, plainDoors] = [1, 3, 1000];
+	const [, maze] = vm.runInContext(`build(${type}, ${seed})`, ctx);
+	maze.generatePlainDoors(plainDoors);
+	const solution = solve(maze);
+
+	const { page, errors } = await openDemo('', gameScript(type, seed, 11, plainDoors));
+	assert.deepStrictEqual(errors, []);
+	assert.ok(await page.locator('.door_1').count() > 0, 'plain doors were drawn');
+	const won = await playKeys(page, solution);
+	assert.strictEqual(won.won, true);
+	assert.strictEqual(won.actions, solution);
+	assert.deepStrictEqual(errors, []);
+	await page.close();
 });
