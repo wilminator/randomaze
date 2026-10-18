@@ -252,3 +252,60 @@ test('a maze with plain doors draws, and a game through them wins', async () => 
 	assert.deepStrictEqual(errors, []);
 	await page.close();
 });
+
+// A game with several wall, floor and door images loaded, to see how they are spread over the maze.
+function lookScript(type, seed, floorImages) {
+	return `
+		const params = new MazeParameters(${type}, ${seed});
+		const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
+			params.doorTypes, params.entrances, params.oneWayWalls);
+		const mazehtml = new MazeHtml(params.htmlSeed, maze);
+		for (const n of ['w1', 'w2', 'w3']) mazehtml.loadWall({name: n, css: 'background: gray;', tags: ['wall']});
+		for (let i = 0; i < ${floorImages}; ++i) mazehtml.loadWall({name: 'f' + i, css: 'background: tan;', tags: ['floor']});
+		for (const c of ['red', 'blue', 'green']) mazehtml.loadDoor({css: 'background: ' + c + ';', tags: ['split']});
+		for (let i = 0; i < 24; ++i) {
+			mazehtml.loadItem({name: 'Key ' + i, initials: 'K' + i, src: '', invsrc: '', css: '', tags: ['key'], doorcolor: '#FF0000'});
+		}
+		mazehtml.generateGameUi('gamewindow');
+		maze.generateMaze();
+		maze.generateDoors();
+		mazehtml.playGame();
+		window.game = {maze, mazehtml};
+	`;
+}
+
+// Classes of every cell face and floor tile, as one string per kind, to compare between page loads.
+async function looks(page) {
+	return page.evaluate(() => ({
+		walls: [...document.querySelectorAll('.tile')].map(e => [...e.classList].filter(c => c.startsWith('wall_')).join()).join(';'),
+		floors: [...document.querySelectorAll('.floor:not(.outside)')].map(e => [...e.classList].filter(c => c.startsWith('floor_')).join()).join(';'),
+	}));
+}
+
+test('walls and floors vary within a maze, and look the same when it is reloaded', async () => {
+	const first = await openDemo('', lookScript(1, 11, 3));
+	assert.deepStrictEqual(first.errors, []);
+	const a = await looks(first.page);
+	const used = text => new Set(text.split(';').flatMap(x => x.split(',')).filter(Boolean));
+	assert.ok(used(a.walls).size > 1, 'more than one wall image is used');
+	assert.ok(used(a.floors).size > 1, 'more than one floor image is used');
+	const second = await openDemo('', lookScript(1, 11, 3));
+	assert.deepStrictEqual(await looks(second.page), a);
+});
+
+test('with no floor images the floors keep their plain colour', async () => {
+	const { page, errors } = await openDemo('', lookScript(1, 11, 0));
+	assert.deepStrictEqual(errors, []);
+	assert.deepStrictEqual((await looks(page)).floors.replaceAll(';', ''), '');
+	assert.ok(await page.locator('.floor').count() > 0);
+});
+
+test('every lock gets a different door look while there are looks left', async () => {
+	const { page, errors } = await openDemo('', lookScript(3, 3, 1));
+	assert.deepStrictEqual(errors, []);
+	// Each lock number has a css rule named door_<lock>; read the background of each.
+	const colours = await page.evaluate(() => Object.entries(game.mazehtml.cssRules)
+		.filter(([name]) => /^door_\d+$/.test(name)).map(([, rule]) => rule.style.backgroundColor));
+	assert.ok(colours.length >= 3, 'the maze has at least three locks');
+	assert.strictEqual(new Set(colours.slice(0, 3)).size, 3, 'the first three locks use the three door looks');
+});
