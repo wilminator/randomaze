@@ -271,3 +271,22 @@ test('a fall costs a tenth of max HP, halved for a Warrior and nothing for a Mon
 	assert.strictEqual(fallDamage(5, { halved: true }), 1);
 	assert.strictEqual(fallDamage(120), 12);
 });
+
+test('the default tick policy gives no free falls or ropes', () => {
+	const TickLayer = vm.runInContext('TickLayer', ctx);
+	const { maze } = holeMaze({ pit: true });
+	const player = new MazePlayer(maze);
+	[player.z, player.y, player.x] = [1, 0, 0];
+	player.dir = 'E';
+	player.ropes = 1;
+	const seen = [];
+	const layer = new TickLayer(player, (tick, action, result) => seen.push(`${tick}:${result.type}`));
+	assert.strictEqual(player.act('F').type, 'fall');
+	// Walk back to the ladder and climb home, then tie a rope on the now known hole.
+	assert.strictEqual(player.act('B').type, 'move');
+	assert.strictEqual(player.act('U').type, 'move');
+	assert.strictEqual(player.act('F').type, 'move');
+	assert.strictEqual(player.act('T').type, 'rope');
+	assert.deepStrictEqual(seen, ['1:fall', '2:move', '3:move', '4:move', '5:rope']);
+	assert.strictEqual(layer.ticks, 5);
+});
