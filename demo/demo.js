@@ -4,7 +4,11 @@ A minimal game: build a maze from a seed and play it in first person.
 Try demo/index.html?type=2&seed=1234
   type: 0 = daily-sized, 1 = small, 2 = medium, 3 = large (see generator/mazeparams.js)
   seed: any number; leave it out for today's maze. The same seed always builds the same maze.
-  doors: how many plain (keyless) doors to add, e.g. &doors=10. Leave it out for none.
+  type=4 is the dungeon maze, which comes with plain doors and holes of its own.
+  doors: how many plain (keyless) doors to add, e.g. &doors=10. Leave it out for none (type 4: its own).
+  holes: how many holes to cut in the floors, e.g. &holes=6. A hole is a one-way drop: D drops you
+         to the floor below, and you cannot climb back. Leave it out for none (type 4: its own).
+  pits: how many of the holes are hidden pits, which drop you the moment you step on them, e.g. &pits=2.
 
 Controls: arrow keys to walk and turn, Page Up / Page Down for ladders, and
 Up arrow at a door to open it if you carry its key.
@@ -34,10 +38,16 @@ function startDemo() {
 	const query = new URLSearchParams(location.search);
 	const type = Number(query.get('type') || 0);
 	const seed = query.get('seed') ? Number(query.get('seed')) : null;
-	const plainDoors = Number(query.get('doors') || 0);
 
 	// The parameters (size, floors, doors...) come from the seed, so one number describes a whole maze.
 	const params = new MazeParameters(type, seed);
+	// The dungeon type brings plain doors, holes and pits of its own; the page can ask for others.
+	const extra = (name, fallback) => query.has(name) ? Number(query.get(name)) : fallback;
+	const plainDoors = extra('doors', params.plainDoors);
+	const holes = extra('holes', params.holes);
+	const pits = extra('pits', params.pits);
+	// Settings typed into the address carry over to the next maze.
+	const carried = ['doors', 'holes', 'pits'].filter(name => query.has(name)).map(name => `&${name}=${query.get(name)}`).join('');
 	const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
 		params.doorTypes, params.entrances, params.oneWayWalls);
 	const mazehtml = new MazeHtml(params.htmlSeed, maze);
@@ -66,7 +76,7 @@ function startDemo() {
 	// The UI calls this for the cog button, and again when it clears itself away after a win.
 	const onMenu = state => {
 		if (state.state === 'win') {
-			const next = `?type=${type}&seed=${Math.floor(Math.random() * 100000)}${plainDoors ? `&doors=${plainDoors}` : ''}`;
+			const next = `?type=${type}&seed=${Math.floor(Math.random() * 100000)}${carried}`;
 			$('#gamewindow').html(`<div class="textWindow">You escaped in ${state.moves} moves.<br><br>
 				<a href="${next}" style="color:white">Play another maze</a></div>`);
 		}
@@ -75,6 +85,7 @@ function startDemo() {
 	maze.generateMaze();
 	maze.generateDoors();
 	maze.generatePlainDoors(plainDoors);
+	maze.generateHoles(holes, pits);
 	mazehtml.playGame();
 }
 

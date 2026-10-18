@@ -12,6 +12,10 @@ function dailySeed(date = new Date()) {
 	return date.getFullYear() * 100000 + (date.getMonth() + 1) * 100 + date.getDate();
 }
 
+// The dungeon's maze type. It is the last row of the table below so the four classic types
+// keep their numbers, and every classic seed keeps its maze.
+const COMBAT = 4;
+
 class MazeParameters{
 	constructor(type, seed = null){
 		if (!seed){
@@ -39,6 +43,8 @@ class MazeParameters{
 			[1.5, 0.5,   4, 0.35, 6,   4, 0.35, 6,    4, 0.45, 4,   1, 0.25, 2,   2, 0.05],
 			[2.5, 1.0,   6, 0.45, 6,   6, 0.45, 6,    8, 0.55, 4,   2, 0.45, 2,   2, 0.25],
 			[3.5, 1.0,   8, 0.55, 8,   8, 0.35, 8,   16, 0.65, 8,   4, 0.45, 2,   2, 0.55],
+			// COMBAT: medium to large, fewer locked doors than type 3 (plain doors and holes are added below).
+			[3.0, 1.0,   8, 0.50, 8,   8, 0.50, 8,   12, 0.55, 6,   4, 0.45, 2,   2, 0.35],
 		][type];
 		
 		// Parameters		
@@ -51,5 +57,18 @@ class MazeParameters{
 		this.doorTypes = generateBinom(doorTries, doorSuccess, doorBase);// 14;
 		this.entrances = generateBinom(entTries, entSuccess, entBase) // 3;
 		this.oneWayWalls = generateBinom(oneTries, oneSuccess);
+
+		// Extras for the dungeon. They are drawn after everything above, and only for COMBAT, so the
+		// classic types draw exactly the numbers they always did. 0 means none.
+		// After generateDoors(), call maze.generatePlainDoors(plainDoors) and maze.generateHoles(holes, pits).
+		this.plainDoors = 0;
+		this.holes = 0;
+		this.pits = 0;
+		if (type == COMBAT) {
+			this.plainDoors = generateBinom(12, 0.5, 8);
+			// Holes only exist above the ground floor, so they scale with the number of upper floors.
+			this.holes = generateBinom(4, 0.5, 2) * Math.max(0, this.floors - 1);
+			this.pits = Math.min(this.holes, generateBinom(3, 0.5, 1));
+		}
 	}
 }

@@ -15,7 +15,7 @@ const count = Number(process.argv[2] || 200);
 const startSeed = Number(process.argv[3] || 1);
 const ctx = load(siteDir);
 const summary = {};
-for (let type = 0; type < 4; ++type) {
+for (let type = 0; type < 5; ++type) {
 	const r = summary[type] = { mazes: 0, withOneWay: 0, crash: 0, hang: 0, trapped: 0, unsolvable: 0, examples: [] };
 	for (let seed = startSeed; seed < startSeed + count; ++seed) {
 		r.mazes++;

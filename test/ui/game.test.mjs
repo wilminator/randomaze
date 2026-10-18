@@ -303,6 +303,57 @@ test('in a classic game C and W do nothing', async () => {
 	const { page, errors } = await openDemo('', gameScript(1, 3, 11));
 	const result = await playKeys(page, 'WC');
 	assert.strictEqual(result.actions, '');
+A top floor of three cells (start, middle, exit) over a bottom floor where the middle cell
+sits between a ladder home and a key. The middle cell on the top floor is a hole or a pit.
+*/
+function holeScript(pit) {
+	return `
+		const maze = new Maze('holes', 2, 3, 1, 0, 2, 0);
+		const upper = c => maze.grid[1][0][c], lower = c => maze.grid[0][0][c];
+		upper(0).data.E = null; upper(1).data.W = null; upper(1).data.E = null; upper(2).data.W = null;
+		upper(0).data.W = null; upper(2).data.E = null;
+		lower(0).data.E = null; lower(1).data.W = null;
+		upper(0).data.D = null; lower(0).data.U = null;
+		upper(1).data.D = null; upper(1).data.hole = true; lower(1).data.U = 0;
+		${pit ? 'upper(1).data.pit = true;' : ''}
+		maze.entranceList = [{cell: upper(0), floor: 1, dir: 'W', pos: 0}, {cell: upper(2), floor: 1, dir: 'E', pos: 0}];
+		const mazehtml = new MazeHtml(1, maze);
+		mazehtml.loadWall({name: 'plain', css: 'background: gray;', tags: ['wall']});
+		mazehtml.loadDoor({css: 'background: brown;', tags: ['split']});
+		mazehtml.generateGameUi('gamewindow');
+		mazehtml.playGame();
+		window.game = {maze, mazehtml};
+	`;
+}
+
+const floorTiles = (page, cls) => page.evaluate(cls => game.maze.grid[1][0].map(cell => cell.html.floor.hasClass(cls)), cls);
+
+test('a hole is drawn as a hole in the floor, with no ladder, and a pit looks like floor', async () => {
+	const seen = await openDemo('', holeScript(false));
+	assert.deepStrictEqual(seen.errors, []);
+	assert.deepStrictEqual(await floorTiles(seen.page, 'hole'), [true, true, false], 'ladder cell and hole cell');
+	const ladders = await seen.page.evaluate(() => game.maze.grid[1][0].map(cell => cell.html.contents.children('.ladder').length));
+	assert.deepStrictEqual(ladders, [1, 0, 0]);
+	// The cell below a hole has the opening in its ceiling.
+	assert.strictEqual(await seen.page.evaluate(() => game.maze.grid[0][0][1].html.ceiling.hasClass('hole')), true);
+	await seen.page.close();
+
+	const hidden = await openDemo('', holeScript(true));
+	assert.deepStrictEqual(await floorTiles(hidden.page, 'hole'), [true, false, false], 'only the ladder shows');
+	assert.strictEqual(await hidden.page.evaluate(() => game.maze.grid[0][0][1].html.ceiling.hasClass('hole')), false);
+	await hidden.page.close();
+});
+
+test('walking onto a pit drops the player to the floor below', async () => {
+	const { page, errors } = await openDemo('', holeScript(true));
+	const where = () => page.evaluate(() => [game.mazehtml.player.z, game.mazehtml.player.y, game.mazehtml.player.x]);
+	assert.deepStrictEqual(await where(), [1, 0, 0]);
+	await page.keyboard.down('ArrowUp');
+	await page.waitForFunction(() => game.mazehtml.player.z == 0);
+	await page.keyboard.up('ArrowUp');
+	assert.deepStrictEqual(await where(), [0, 0, 1], 'across and down');
+	// The counter changes when the fall animation ends; the page must stay error free until then.
+	await page.waitForFunction(() => document.querySelector('#moves').textContent == 'Moves: 1', null, { timeout: 15000 });
 	assert.deepStrictEqual(errors, []);
 	await page.close();
 });

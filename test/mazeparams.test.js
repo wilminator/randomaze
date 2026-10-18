@@ -74,3 +74,21 @@ test('leaving the seed out builds today\'s maze', () => {
 		[before, after].some(seed => JSON.stringify(params(2, seed)) === JSON.stringify(today)),
 		'MazeParameters without a seed should match dailySeed()');
 });
+
+test('the dungeon type has its own extras, and the classic types have none', () => {
+	for (let type = 0; type < 4; type++) {
+		const p = params(type, 7);
+		assert.deepStrictEqual([p.plainDoors, p.holes, p.pits], [0, 0, 0], `type ${type}`);
+	}
+	let withHoles = 0;
+	for (let seed = 1; seed <= 300; seed++) {
+		const p = params(4, seed);
+		assert.ok(p.floors >= 1 && p.columns >= 8 && p.rows >= 8, `seed ${seed} is a real maze`);
+		assert.ok(p.plainDoors >= 8, `seed ${seed} has plain doors`);
+		assert.ok(p.pits <= p.holes, `seed ${seed}: pits are holes`);
+		if (p.floors == 1) assert.strictEqual(p.holes, 0, 'no holes on a one-floor maze');
+		if (p.holes > 0) ++withHoles;
+		assert.deepStrictEqual(params(4, seed), p, 'the same seed gives the same parameters');
+	}
+	assert.ok(withHoles > 200, 'most dungeon mazes have holes');
+});

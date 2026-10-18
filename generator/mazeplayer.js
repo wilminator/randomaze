@@ -11,13 +11,24 @@ An action is one letter, and every action that counts as a move is recorded:
 	L  turn left
 	R  turn right
 	U  climb a ladder up
-	D  climb a ladder down
+	D  climb a ladder down, or drop through a hole you can see
+	T  tie a rope to the hole you are standing on (needs a rope, see below)
 A dungeon game (see below) adds two more:
 	C  close the open door ahead (a door that needs a key stays closed to monsters, and you
 	   keep the key, so you can always open it again)
 	W  wait a move
 Actions that do nothing (bumping a wall, a locked door, a missing ladder) are free and
 are not recorded, so a game's move count is always the length of its action string.
+
+Holes (see Maze.generateHoles) are one-way drops: a cell with data.hole has an open floor and the cell
+below it has a solid ceiling.
+	- A hole you can see never drops you by accident: walk across it, or press D to drop on purpose.
+	- A pit (data.pit) is a hole nobody has spotted. Stepping onto it drops you at once, with the
+	  action that stepped. Once it has caught someone, or been added to `revealedPits` (a Rogue's
+	  Trap Sense, say), it behaves like any other hole.
+	- Every drop is a 'fall' (it hurts, the dungeon decides how much). With a rope tied to the hole,
+	  going down is an ordinary 'move' and U climbs back up. Ropes are counted in `ropes`, which
+	  whoever sets up the run fills in; the rules only spend them.
 The page can also pass the time of each move, which is kept alongside in `times`.
 
 Moves and ticks are separate layers. A move is what the maze's rules say it is, and the classic
@@ -50,6 +61,10 @@ class MazePlayer {
 		this.openDoors = new Set();
 		this.fallenWalls = new Set();
 		this.takenKeys = new Set();
+		// Holes: pits that are known now, holes with a rope tied, and ropes in the pack.
+		this.revealedPits = new Set();
+		this.ropedHoles = new Set();
+		this.ropes = 0;
 	}
 
 	get moves() {
@@ -78,6 +93,9 @@ class MazePlayer {
 	Does one action. Returns what happened, or null when nothing did (no move is counted):
 		{type: 'move'}               walked forward, back, up or down
 		{type: 'turn'}
+		{type: 'fall', via}          dropped one floor through a hole. `via` is 'step' when walking onto
+		                             an unseen pit (the player also moved across), 'drop' for D
+		{type: 'rope'}               tied a rope to the hole underfoot
 		{type: 'door', key}          opened the door ahead, which took key number `key`
 		{type: 'close', key}         dungeon only: closed the open door ahead (its key number)
 		{type: 'wait'}               dungeon only: let a move pass
@@ -93,7 +111,7 @@ class MazePlayer {
 		if (!result) return null;
 		this.actions += action;
 		if (time !== null) this.times.push(time);
-		if (result.type == 'move' || result.type == 'turn' || result.type == 'door') {
+		if (result.type == 'move' || result.type == 'turn' || result.type == 'door' || result.type == 'fall') {
 			const cell = this.cell();
 			const key = cell.data.item.key;
 			if (key && !this.takenKeys.has(`${cell.loc}`)) {
@@ -126,7 +144,7 @@ class MazePlayer {
 					}
 					this.x += dx[dir];
 					this.y += dy[dir];
-					return { type: 'move' };
+					return this.landOn();
 				}
 				if (cell.data[dir] > 0 && this.keys.includes(cell.data[dir])) {
 					const next = this.maze.getNextCell(cell, dir);
@@ -151,7 +169,7 @@ class MazePlayer {
 				if ((cell.data[back] === null && !this.isOutside(cell, back)) || (cell.data[back] > 0 && this.isDoorOpen(cell, back))) {
 					this.x -= dx[dir];
 					this.y -= dy[dir];
-					return { type: 'move' };
+					return this.landOn();
 				}
 				return null;
 			}
@@ -162,19 +180,52 @@ class MazePlayer {
 				this.dir = MazePlayer.turnRight[dir];
 				return { type: 'turn' };
 			case 'U':
-				if (this.z < this.maze.floors - 1 && cell.data.U === null) {
+				// A ladder, or the rope tied to the hole above.
+				if (this.z < this.maze.floors - 1 && (cell.data.U === null || this.isRoped(this.maze.grid[this.z + 1][this.y][this.x]))) {
 					++this.z;
 					return { type: 'move' };
 				}
 				return null;
 			case 'D':
 				if (this.z > 0 && cell.data.D === null) {
-					--this.z;
-					return { type: 'move' };
+					if (!cell.data.hole || this.isRoped(cell)) {
+						--this.z;
+						return { type: 'move' };
+					}
+					this.fall(cell);
+					return { type: 'fall', via: 'drop' };
+				}
+				return null;
+			case 'T':
+				if (cell.data.hole && this.ropes > 0 && !this.isRoped(cell)) {
+					--this.ropes;
+					this.ropedHoles.add(`${cell.loc}`);
+					this.revealedPits.add(`${cell.loc}`);
+					return { type: 'rope' };
 				}
 				return null;
 		}
 		return null;
+	}
+
+	isRoped(cell) {
+		return !!cell && this.ropedHoles.has(`${cell.loc}`);
+	}
+
+	// The player has just walked onto a new cell. An unseen pit swallows them.
+	landOn() {
+		const cell = this.cell();
+		if (cell.data.pit && !this.revealedPits.has(`${cell.loc}`)) {
+			this.fall(cell);
+			return { type: 'fall', via: 'step' };
+		}
+		return { type: 'move' };
+	}
+
+	// Drops one floor from a hole. Whoever fell knows about the hole from now on.
+	fall(cell) {
+		this.revealedPits.add(`${cell.loc}`);
+		--this.z;
 	}
 }
 
@@ -226,4 +277,14 @@ function replayGame(maze, actions, options = {}) {
 		return { valid: false, reason: 'the player never left the maze' };
 	}
 	return layer ? { valid: true, moves: player.moves, ticks: layer.ticks } : { valid: true, moves: player.moves };
+}
+
+/*
+HP lost to one fall through a hole: a tenth of max HP, never less than 1.
+`halved` is the Warrior's Iron Skin; `immune` is the Monk's Feather Fall. The player's rules above
+only say a fall happened ({type: 'fall'}); the dungeon turns that into damage with this.
+*/
+function fallDamage(maxHp, { halved = false, immune = false } = {}) {
+	if (immune) { return 0; }
+	return Math.max(1, Math.round(maxHp * 0.1 * (halved ? 0.5 : 1)));
 }
