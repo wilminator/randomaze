@@ -237,7 +237,7 @@ which rules version they were played under.
 */
 class TickLayer {
 	// Every kind of move costs a tick, turns included, as the design starts out.
-	static defaultPolicy = { move: true, turn: true, door: true, close: true, wait: true, trap: true, win: false };
+	static defaultPolicy = { move: true, turn: true, door: true, close: true, wait: true, trap: true, fall: true, rope: true, win: false };
 
 	constructor(player, onTick = null, policy = TickLayer.defaultPolicy) {
 		this.policy = policy;
