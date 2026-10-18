@@ -52,7 +52,7 @@ async function openDemo(query, script = null, pageOptions = {}) {
 
 // A game set up like the demo, but with only `keyCount` key items and no menu callback.
 // `plainDoors` asks the generator for that many keyless doors.
-function gameScript(type, seed, keyCount, plainDoors = 0) {
+function gameScript(type, seed, keyCount, plainDoors = 0, dungeon = false) {
 	return `
 		const params = new MazeParameters(${type}, ${seed});
 		const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
@@ -64,6 +64,7 @@ function gameScript(type, seed, keyCount, plainDoors = 0) {
 			mazehtml.loadItem({name: 'Key ' + i, initials: 'K' + i, src: '', invsrc: '', css: '',
 				tags: ['key'], doorcolor: '#FF0000'});
 		}
+		mazehtml.dungeon = ${dungeon};
 		mazehtml.generateGameUi('gamewindow');
 		maze.generateMaze();
 		maze.generateDoors();
@@ -181,7 +182,7 @@ Press keys in the real game and check it records exactly what the rules say, so 
 replaying the recording gets the same result. `keys` is a string of actions (F B L R U D);
 bumps are pressed too, and must not be recorded.
 */
-const pressFor = {F: 'ArrowUp', B: 'ArrowDown', L: 'ArrowLeft', R: 'ArrowRight', U: 'PageUp', D: 'PageDown'};
+const pressFor = {F: 'ArrowUp', B: 'ArrowDown', L: 'ArrowLeft', R: 'ArrowRight', U: 'PageUp', D: 'PageDown', C: 'c', W: 'w'};
 async function playKeys(page, keys) {
 	const idle = () => page.waitForFunction(() => !game.mazehtml.isBusy(), null, {polling: 10});
 	for (const key of keys) {
@@ -249,6 +250,59 @@ test('a maze with plain doors draws, and a game through them wins', async () => 
 	const won = await playKeys(page, solution);
 	assert.strictEqual(won.won, true);
 	assert.strictEqual(won.actions, solution);
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+/*
+A dungeon game adds C (close the open door ahead) and W (wait). Close a plain door right after
+opening it, check the page really shut it, open it again and finish the maze. The tick layer
+counts the same ticks live as the server's replay does.
+*/
+test('in a dungeon, C closes a door and W waits, and the recording replays', async () => {
+	const { solve, load } = require('../../tools/check_mazes_lib.js');
+	const ctx = load(root);
+	const [type, seed, plainDoors] = [1, 3, 1000];
+	const [, maze] = vm.runInContext(`build(${type}, ${seed})`, ctx);
+	maze.generatePlainDoors(plainDoors);
+	const solution = solve(maze);
+	// Where the solution first opens a door: play it in the rules until a 'door' result.
+	const probe = new (vm.runInContext('MazePlayer', ctx))(maze, false, true);
+	let doorAt = -1;
+	for (let i = 0; i < solution.length && doorAt < 0; ++i) {
+		if (probe.act(solution[i]).type == 'door') doorAt = i;
+	}
+	assert.ok(doorAt >= 0, 'the solution goes through a plain door');
+
+	const { page, errors } = await openDemo('', gameScript(type, seed, 11, plainDoors, true));
+	assert.deepStrictEqual(errors, []);
+	await page.evaluate(() => { game.ticks = []; game.mazehtml.onMove((action, result) => game.ticks.push(action)); });
+	const openDoors = () => page.evaluate(() => document.querySelectorAll('.door_split_left_open').length);
+	await playKeys(page, solution.slice(0, doorAt + 1));
+	assert.ok(await openDoors() > 0, 'the door opened');
+	await playKeys(page, 'WC');
+	assert.strictEqual(await openDoors(), 0, 'the door closed again');
+	const closed = await page.evaluate(() => { const p = game.mazehtml.player; return p.canWalk(p.cell(), p.dir); });
+	assert.strictEqual(closed, false);
+	// Reopen it and finish the maze.
+	const won = await playKeys(page, solution.slice(doorAt));
+	const expected = solution.slice(0, doorAt + 1) + 'WC' + solution.slice(doorAt);
+	assert.strictEqual(won.won, true);
+	assert.strictEqual(won.actions, expected);
+	// The hook saw every move, and the server-side replay agrees on the result and on the ticks.
+	const hooked = await page.evaluate(() => game.ticks.join(''));
+	assert.strictEqual(hooked, expected);
+	const replay = vm.runInContext('replayGame', ctx)(maze, won.actions, {dungeon: true});
+	assert.strictEqual(replay.valid, true);
+	assert.strictEqual(replay.ticks, expected.length - 1, 'every move but the winning step ticks');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('in a classic game C and W do nothing', async () => {
+	const { page, errors } = await openDemo('', gameScript(1, 3, 11));
+	const result = await playKeys(page, 'WC');
+	assert.strictEqual(result.actions, '');
 	assert.deepStrictEqual(errors, []);
 	await page.close();
 });
