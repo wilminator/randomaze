@@ -432,12 +432,20 @@ class MazeHtml{
 					// Add ladders and other cell contents.
 					for (const dir of ['U','D']) {
 						if (cell.data[dir] === null) {
+							// A hole in the floor has no ladder. A pit looks like solid floor until it is spotted.
+							if (dir == 'D' && cell.data.hole) {
+								if (!cell.data.pit) { fTile.addClass('hole'); }
+								continue;
+							}
 							const elem = $('<div>').addClass(`item ladder ladder_${dir}`);
 							contents.append(elem);
 							const hole = dir == 'U' ? cTile : fTile;
 							hole.addClass('hole');
 						}
 					}
+					// The hole above this cell opens in its ceiling.
+					const above = floor + 1 < this.maze.floors ? this.maze.grid[floor + 1][row][column] : null;
+					if (above && above.data.hole && !above.data.pit) { cTile.addClass('hole'); }
 					// Add key
 					if (cell.data.item.key) {
 						//const elem = $('<div>').addClass('item key').css('filter',`hue-rotate(${cell.data.item.key * 24 - 48}deg)`);
@@ -795,10 +803,13 @@ PgDn Descend<br />
 					animationState = action == 'L' ? 'left' : 'right';
 					return false; // action in progress
 			}
-			// A move: forward, back, or a ladder.
-			if (action == 'U' || action == 'D') {
+			// A move: forward, back, or a ladder. A fall is a move too, and when it began by stepping
+			// onto an unseen pit, the player has also crossed to the pit's cell.
+			if (action == 'U' || action == 'D' || result.type == 'fall') {
 				// Hide the map cursor
 				mazehtmlui.renderMapCursor(cell);
+				pX = player.x;
+				pY = player.y;
 				pZ = player.z;
 				// Update the UI
 				const lift = action == 'U' ? 100 : -100;
