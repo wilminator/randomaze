@@ -19,7 +19,9 @@ const ctx = { Math: Object.create(Math), console: { log() {} } };
 ctx.Math.seedrandom = seedrandom;
 vm.createContext(ctx);
 const dir = generatorDir(rootDir);
-for (const f of ['mazeutil.js', 'mazegen.js', 'mazeparams.js', 'mazeplayer.js'].map(name => `${dir}/${name}`)) {
+// dungeon.js is the combat layer; a copy of the engine from before it existed does not have it.
+const files = ['mazeutil.js', 'mazegen.js', 'mazeparams.js', 'mazeplayer.js', 'dungeon.js'].map(name => `${dir}/${name}`);
+for (const f of files.filter(f => fs.existsSync(path.join(rootDir, f)))) {
 	vm.runInContext(fs.readFileSync(path.join(rootDir, f), 'utf8'), ctx, { filename: f });
 }
 vm.runInContext(`
@@ -28,6 +30,9 @@ function build(type, seed) {
 	const m = new Maze(p.mazeSeed, p.floors, p.columns, p.rows, p.doorTypes, p.entrances, p.oneWayWalls);
 	m.generateMaze();
 	m.generateDoors();
+	// The dungeon's extras. Classic types have none, so their mazes are untouched.
+	if (p.plainDoors) m.generatePlainDoors(p.plainDoors);
+	if (p.holes) m.generateHoles(p.holes, p.pits);
 	return [p, m];
 }`, ctx);
 return ctx;
@@ -54,6 +59,8 @@ function countTraps(maze) {
 		const s = queue.shift();
 		if (s.cell === exit) continue; // player walks out and wins
 		for (const dir of DIRS) {
+			// An unseen pit drops you the moment you step on it, so you never walk on from it.
+			if (s.cell.data.pit && dir != 'U' && dir != 'D') continue;
 			const v = s.cell.data[dir];
 			const next = maze.getNextCell(s.cell, dir);
 			if (!next || !(v === null || v === 1 || (v > 1 && (s.keys & keyBit(v))))) continue;

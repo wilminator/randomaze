@@ -1325,6 +1325,111 @@ class Maze {
 		return placed;
 	}
 
+	/*
+	Cuts up to `count` holes in the floor. Call it after generateDoors(). Returns how many it made.
+
+	A hole is a one-way drop, the vertical twin of a one-way wall:
+		upper cell:  data.D = null, data.hole = true     (open going down)
+		lower cell:  data.U = 0                          (closed coming back up)
+	A ladder has both ends open; a hole only the top. Holes never go on the bottom floor, an
+	entrance cell, a key cell, or a cell that has a ladder, and never land on an entrance cell.
+	Cells in corridors (two ways out) are used first, so a hole is a choice you see coming.
+
+	Up to `pits` of the holes are also hidden: they get data.pit = true. A MazePlayer falls
+	through a pit the moment it steps on the cell, instead of choosing to drop. Walking into a
+	pit gives you no way onward, so a pit only goes where the maze still works with that cell
+	as a dead end (checked with findTraps). The cell keeps its normal passages, so a pit that
+	has been spotted can be walked around like any other hole.
+
+	It draws from its own random stream, not the maze's, so it never moves a wall, key or door.
+	A maze built without calling this is the same as before it existed.
+	Holes can strand the player, so findTraps checks every round of holes and takes back the ones
+	that did (the maze had no traps before this call, so the blame is always on the new holes). If some holes are removed, others are tried until `count` is reached or
+	there are none left, so the count is only short when the maze has no room.
+	*/
+	generateHoles(count, pits = 0) {
+		if (count <= 0) { return 0; }
+		const generateInt = generateIntegerWrapper(new Math.seedrandom(`${this.seed}:holes`));
+		const startCell = this.entranceList[0].cell;
+		const endCell = this.entranceList[this.entranceList.length - 1].cell;
+		const entranceCells = new Set(this.entranceList.map(e => e.cell));
+		// Every cell a hole could go in, with the cell below it.
+		const eligible = [];
+		for (const cell of this.cellList) {
+			if (cell.loc[0] == 0 || cell.data.hole || cell.data.item.key || entranceCells.has(cell)) continue;
+			if (cell.data.U !== 0 || cell.data.D !== 0) continue;
+			const below = this.getNextCell(cell, 'D');
+			if (below.data.U !== 0 || entranceCells.has(below)) continue;
+			eligible.push(cell);
+		}
+		// Shuffle, then move corridors to the front (keeping the shuffled order inside each group).
+		for (let i = 0; i < eligible.length - 1; ++i) {
+			const pick = i + generateInt(eligible.length - i);
+			[eligible[i], eligible[pick]] = [eligible[pick], eligible[i]];
+		}
+		const queue = eligible.filter(c => this.countHorizontalPaths(c) == 2)
+			.concat(eligible.filter(c => this.countHorizontalPaths(c) != 2));
+
+		const holes = [];
+		let next = 0;
+		while (holes.length < count && next < queue.length) {
+			const batch = queue.slice(next, next + count - holes.length);
+			next += batch.length;
+			for (const cell of batch) { this.openHole(cell); }
+			// Take back each hole that has trapped the player, until none does.
+			let result;
+			while (!(result = this.findTraps(startCell, endCell)).solvable || result.trapped > 0) {
+				// Usually a hole is the move into the trap. Not always: a hole can also bring the player to
+				// an old one-way wall holding keys they lacked before, which is a new way to get stuck.
+				// Then any of this round's holes could be to blame, so take one back at random.
+				const stranding = result.exits.filter(([cell, dir]) => dir == 'D' && batch.includes(cell));
+				const blame = stranding.length > 0 ? stranding.map(([cell]) => cell) : batch;
+				const cell = blame[generateInt(blame.length)];
+				this.closeHole(cell);
+				batch.splice(batch.indexOf(cell), 1);
+			}
+			holes.push(...batch);
+		}
+
+		// Choose the pits among the holes that can be dead ends.
+		const shuffled = holes.slice();
+		for (let i = 0; i < shuffled.length - 1; ++i) {
+			const pick = i + generateInt(shuffled.length - i);
+			[shuffled[i], shuffled[pick]] = [shuffled[pick], shuffled[i]];
+		}
+		const sealed = [];
+		for (const cell of shuffled) {
+			if (sealed.length >= pits) break;
+			// Pretend you can't walk on from the cell: wall its sides in but leave the neighbours open.
+			const saved = ['N', 'S', 'E', 'W'].map(dir => [dir, cell.data[dir]]);
+			for (const [dir] of saved) { cell.data[dir] = 0; }
+			const result = this.findTraps(startCell, endCell);
+			if (result.solvable && result.trapped == 0) {
+				sealed.push([cell, saved]);
+			} else {
+				for (const [dir, value] of saved) { cell.data[dir] = value; }
+			}
+		}
+		for (const [cell, saved] of sealed) {
+			for (const [dir, value] of saved) { cell.data[dir] = value; }
+			cell.data.pit = true;
+		}
+		return holes.length;
+	}
+
+	// A hole: open going down, shut coming back up.
+	openHole(cell) {
+		cell.data.D = null;
+		cell.data.hole = true;
+		this.getNextCell(cell, 'D').data.U = 0;
+	}
+
+	closeHole(cell) {
+		cell.data.D = 0;
+		delete cell.data.hole;
+		delete cell.data.pit;
+	}
+
 	mazeFail(startCell, endCell) {
 		/*
 		This function test solves a maze in it's current state.
