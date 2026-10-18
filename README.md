@@ -28,7 +28,7 @@ Page Up / Page Down climb ladders.
 
 The files are classic browser scripts (no modules). Load them in this order:
 `generator/mazeutil.js`, `generator/mazegen.js`, `generator/mazeparams.js`,
-`generator/mazeplayer.js`, then
+`generator/mazeplayer.js`, `generator/dungeon.js` (only for the dungeon game), then
 `ui/music.js`, `ui/mazehtml.js`. `demo/index.html` shows the whole setup.
 
 ## Using the generator
@@ -71,6 +71,25 @@ type and seed and replay the game, without trusting the page's move count:
 const result = replayGame(maze, actions);
 // {valid: true, moves: 57}, or {valid: false, reason: 'action 12 (F) does nothing'}
 ```
+
+## The dungeon (monsters and fights)
+
+`generator/dungeon.js` is a layer on top of a finished maze: monsters that wander and chase,
+damage traps, and one-on-one fights. It is turn based (monsters act when you move) and every roll
+comes from a seeded stream, so a server can replay a finished run and get the same fights.
+
+```js
+const { maze, dungeon, seed } = buildDungeon(dailySeed());   // the day's dungeon
+const hero = {cls: 'warrior', level: 1, xp: 0, safeShare: 1, xpTable, monsters: {first: 1, width: 3}};
+const result = replayDungeon(maze, dungeon, hero, nonce, actions);
+// {valid: true, outcome: 'escaped' | 'died', ticks, floor, xp, kills, ...}
+// or {valid: false, reason: 'action 212 (A): no fight in progress'}
+```
+
+Exploring uses the classic letters plus `W` (wait) and `C` (close the open door ahead). In a
+fight, `A` attacks, `G` guards and `X` flees. All the numbers (classes, monsters, XP, trap damage)
+are in `DUNGEON_CONTENT`. For play, create a `DungeonGame` and call `act(letter)`; with
+`{events: true}` each call returns a list of what happened, for the page to animate.
 
 ## Using the UI
 

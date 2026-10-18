@@ -29,10 +29,6 @@ All the numbers are in DUNGEON_CONTENT below, passed into everything, so the bal
 tune them (and a private copy can replace them) without touching the rules.
 */
 
-// The maze type for the daily dungeon. It is the fifth row of MazeParameters, added at the end of
-// the table so the four classic types keep their numbers and every classic seed keeps its maze.
-const DUNGEON_MAZE_TYPE = 4;
-
 const DUNGEON_CONTENT = {
 	// Which version of these rules a record was played under. Change it when a change here would
 	// make an old record replay differently.
@@ -50,7 +46,7 @@ const DUNGEON_CONTENT = {
 	stepsPerSp: 8,
 
 	// Which kinds of move cost a tick. Same shape as TickLayer's policy.
-	tickPolicy: { move: true, turn: true, door: true, close: true, wait: true, trap: true, win: false },
+	tickPolicy: { move: true, turn: true, door: true, close: true, wait: true, trap: true, fall: true, rope: true, win: false },
 
 	// Placement (design 3.1, 8.2).
 	cellsPerMonster: 12,
@@ -59,7 +55,6 @@ const DUNGEON_CONTENT = {
 	minStartDistance: 3,      // no monster or trap this many steps (or fewer) from the start
 	bossMinCells: 450,        // the exit guardian only stands in mazes with at least this many cells
 	cellsPerTrap: { spikes: 40, dart: 60, alarm: 80 },
-	plainDoorCells: 20,       // one plain door per this many cells, added by buildDungeon
 	// Which species may stand where. Tier 1 near the start, tier 3 deep.
 	tiers: { 1: ['rat', 'slime', 'bat'], 2: ['goblin', 'skeleton', 'spider'], 3: ['orc', 'wraith'] },
 
@@ -422,9 +417,10 @@ class DungeonGame {
 	}
 
 	exploreAct(letter) {
-		if (!'FBLRUDWC'.includes(letter)) {
-			if (letter.length == 1 && '1234I'.includes(letter)) return { ok: false, reason: 'skills and items are not available yet' };
-			return { ok: false, reason: 'no fight in progress' };
+		if (!'FBLRUDWC'.includes(letter) || letter.length != 1) {
+			if ('1234I'.includes(letter) && letter.length == 1) return { ok: false, reason: 'skills and items are not available yet' };
+			if ('AGX'.includes(letter) && letter.length == 1) return { ok: false, reason: 'no fight in progress' };
+			return { ok: false, reason: `${letter} is not an action` };
 		}
 		const before = this.playerCell();
 		const result = this.player.act(letter);
@@ -442,11 +438,18 @@ class DungeonGame {
 			this.emit({ type: 'escaped' });
 			return;
 		}
-		if (result.type != 'move') return;
+		if (result.type != 'move' && result.type != 'fall') return;
 		const cell = this.playerCell();
 		this.noteTrail(cell);
 		if (++this.steps % this.content.stepsPerSp == 0) this.sp = Math.min(this.stats.maxSp, this.sp + 1);
 		this.maxDist = Math.max(this.maxDist, this.dungeon.dist.get(cell) ?? 0);
+		if (result.type == 'fall') {
+			// Dropped a floor: it hurts, and there is no stepping back up (so no fleeing that way).
+			this.prev = null;
+			this.emit({ type: 'fall', via: result.via });
+			this.hurtHero(fallDamage(this.stats.maxHp));
+			if (this.outcome) return;
+		}
 		this.enterCell(cell);
 	}
 
@@ -749,8 +752,9 @@ class DungeonGame {
 	// One round: both sides act, the faster first (the hero on a tie, or on a first strike).
 	fightAct(letter) {
 		if (letter.length != 1 || !'AGX'.includes(letter)) {
-			if (letter.length == 1 && '1234I'.includes(letter)) return { ok: false, reason: 'skills and items are not available yet' };
-			return { ok: false, reason: 'you are in a fight' };
+			if ('1234I'.includes(letter) && letter.length == 1) return { ok: false, reason: 'skills and items are not available yet' };
+			if ('FBLRUDWC'.includes(letter) && letter.length == 1) return { ok: false, reason: 'you are in a fight' };
+			return { ok: false, reason: `${letter} is not an action` };
 		}
 		const f = this.fight, m = f.monster;
 		++f.round;
@@ -903,16 +907,17 @@ function replayDungeon(maze, dungeon, hero, nonce, actions, options = {}) {
 
 /*
 Builds the daily dungeon from a day's seed (the classic dailySeed, e.g. 202601018): its maze, from
-the combat row of MazeParameters, with plain doors added, and its Dungeon. The maze's own seed
-stream is never used for the dungeon, so nothing here moves a wall.
-Returns {params, maze, dungeon, seed} where seed is the dungeon's seed (what dice are made from).
+the combat row of MazeParameters (COMBAT), with that row's plain doors, holes and pits added, and
+its Dungeon. The maze's own random stream is never used for the dungeon, so nothing here moves a wall.
+Returns {params, maze, dungeon, seed} where seed is the dungeon's seed (what the dice are made from).
 */
 function buildDungeon(daySeed, content = DUNGEON_CONTENT) {
-	const params = new MazeParameters(DUNGEON_MAZE_TYPE, `${daySeed}:dungeon`);
+	const params = new MazeParameters(COMBAT, `${daySeed}:dungeon`);
 	const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows, params.doorTypes, params.entrances, params.oneWayWalls);
 	maze.generateMaze();
 	maze.generateDoors();
-	maze.generatePlainDoors(Math.round(maze.cellList.length / content.plainDoorCells));
+	maze.generatePlainDoors(params.plainDoors);
+	maze.generateHoles(params.holes, params.pits);
 	const seed = new Math.seedrandom(`${params.mazeSeed}:dungeon`).int32();
 	return { params, maze, dungeon: new Dungeon(maze, seed, content), seed };
 }

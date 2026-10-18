@@ -303,6 +303,11 @@ test('in a classic game C and W do nothing', async () => {
 	const { page, errors } = await openDemo('', gameScript(1, 3, 11));
 	const result = await playKeys(page, 'WC');
 	assert.strictEqual(result.actions, '');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+/*
 A top floor of three cells (start, middle, exit) over a bottom floor where the middle cell
 sits between a ladder home and a key. The middle cell on the top floor is a hole or a pit.
 */

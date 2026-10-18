@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const vm = require('vm');
-const { emptyMaze, openBoth, generate, params, ctx } = require('./helpers.js');
+const { Maze, emptyMaze, openBoth, generate, params, ctx } = require('./helpers.js');
 
 const Dungeon = vm.runInContext('Dungeon', ctx);
 const DungeonGame = vm.runInContext('DungeonGame', ctx);
@@ -76,6 +76,13 @@ test('the daily dungeon builds the same every time, and has its own parameter ro
 	assert.notDeepStrictEqual(describe(a), describe(c));
 	// Type 4 exists, and the classic types are untouched (mazeparams.test.js pins their seeds).
 	assert.ok(params(4, 5).floors >= 1);
+});
+
+test('buildDungeon makes the same maze as the combat row of the maze builder', () => {
+	// The dungeon's maze is the ordinary COMBAT maze for that seed: the dungeon layer adds monsters, not walls.
+	const layout = (m) => plain(m.cellList.map(x => [x.data.N, x.data.S, x.data.E, x.data.W, x.data.U, x.data.D, !!x.data.hole, !!x.data.pit, x.data.item.key]));
+	const [, same] = vm.runInContext('build(4, "202601018:dungeon")', ctx);
+	assert.deepStrictEqual(layout(buildDungeon(202601018).maze), layout(same));
 });
 
 test('monsters follow the placement rules', () => {
@@ -357,6 +364,55 @@ test('a trap can kill the hero', () => {
 	assert.strictEqual(game.outcome, 'died');
 });
 
+// ---------------------------------------------------------------- holes
+
+// Two floors, three cells wide. The hero starts on the top floor (west), the exit is on the
+// top floor (east), and the middle top cell is a hole (or a hidden pit) down to the bottom floor.
+function holeMaze(pit) {
+	const maze = new Maze('holes', 2, 3, 1, 0, 2, 0);
+	const upper = (c) => maze.grid[1][0][c], lower = (c) => maze.grid[0][0][c];
+	openBoth(maze, upper(0), 'E'); openBoth(maze, upper(1), 'E');
+	openBoth(maze, lower(0), 'E');
+	upper(0).data.W = null; upper(2).data.E = null;
+	upper(1).data.D = null; upper(1).data.hole = true; lower(1).data.U = 0;
+	if (pit) upper(1).data.pit = true;
+	maze.entranceList = [{ cell: upper(0), dir: 'W' }, { cell: upper(2), dir: 'E' }];
+	maze.cell = (r, c) => upper(c);
+	maze.lower = lower;
+	return maze;
+}
+
+test('dropping through a hole costs a tick and 10% of max HP', () => {
+	const game = setup({ maze: holeMaze(false), content: blind() });
+	run(game, 'F');
+	assert.strictEqual(game.hp, 30, 'a hole you can see is safe to stand on');
+	const ticks = game.ticks;
+	run(game, 'D');
+	assert.strictEqual(game.player.z, 0, 'one floor down');
+	assert.strictEqual(game.hp, 27, 'a fall is 10% of 30 HP');
+	assert.strictEqual(game.ticks, ticks + 1);
+	assert.strictEqual(game.act('U').ok, false, 'there is no way back up');
+});
+
+test('an unseen pit drops you when you step on it, and can land you in a fight or kill you', () => {
+	const fight = setup({ maze: holeMaze(true), content: blind() });
+	fight.monsters.length = 0;
+	const lowerCell = fight.maze.lower(1);
+	fight.dungeon.monsters = [{ id: 0, species: 'rat', cell: lowerCell, depth: 0, jitter: 0 }];
+	const game = new DungeonGame(fight.maze, fight.dungeon, hero(), 'pit', { events: true });
+	game.dice = scriptedDice();
+	run(game, 'F');
+	assert.strictEqual(game.player.z, 0, 'the pit swallowed the hero');
+	assert.ok(game.events.some(e => e.type == 'fall' && e.via == 'step'));
+	assert.ok(game.fight, 'and the hero landed on the rat');
+	assert.strictEqual(game.fight.firstStrike, true);
+
+	const deadly = setup({ maze: holeMaze(true), content: blind() });
+	deadly.hp = 3;
+	run(deadly, 'F');
+	assert.strictEqual(deadly.outcome, 'died');
+});
+
 // ---------------------------------------------------------------- the whole run, and replay
 
 test('walking out of the exit ends the run as escaped', () => {
@@ -381,7 +437,8 @@ test('replayDungeon accepts a real run and reports why it refuses a bad one', ()
 	assert.strictEqual(bad('F'.repeat(12) + 'F'), 'actions continue after the run ended at 12');
 	assert.strictEqual(bad('B'), 'action 0 (B): does nothing');
 	assert.strictEqual(bad('F1'), 'action 1 (1): skills and items are not available yet');
-	assert.strictEqual(bad('Z'), 'action 0 (Z): no fight in progress');
+	assert.strictEqual(bad('Z'), 'action 0 (Z): Z is not an action');
+	assert.strictEqual(bad('T'), 'action 0 (T): T is not an action');
 	assert.strictEqual(bad('C'), 'action 0 (C): does nothing');
 });
 
