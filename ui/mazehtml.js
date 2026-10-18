@@ -49,22 +49,31 @@ const defaultDoorOpen = (door, otherDoor, openCss, otherOpenCss = null)=>{
 	door.children('.door').addClass(openCss);
 	otherDoor.children('.door').on('transitionend', stopPropagation).addClass(otherOpenCss ? otherOpenCss : openCss);
 };
+// Closing a door undoes what its open function did; the same one transition ends the animation.
+const defaultDoorClose = (door, otherDoor, openCss, otherOpenCss = null)=>{
+	door.children('.door').removeClass(openCss);
+	otherDoor.children('.door').on('transitionend', stopPropagation).removeClass(otherOpenCss ? otherOpenCss : openCss);
+};
 const openDoorFxns = {
 	up:{
 		new: defaultDoorNew,
 		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_up_open'),
+		close:(door, oDoor)=>defaultDoorClose(door, oDoor, 'door_up_open'),
 	},
 	down:{
 		new: defaultDoorNew,
 		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_down_open'),
+		close:(door, oDoor)=>defaultDoorClose(door, oDoor, 'door_down_open'),
 	},
 	left:{
 		new: defaultDoorNew,
 		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_left_open'),
+		close:(door, oDoor)=>defaultDoorClose(door, oDoor, 'door_left_open'),
 	},
 	right:{
 		new: defaultDoorNew,
 		open:(door, oDoor)=>defaultDoorOpen(door, oDoor, 'door_right_open'),
+		close:(door, oDoor)=>defaultDoorClose(door, oDoor, 'door_right_open'),
 	},
 	split:{
 		new:(elem, key, text)=>{
@@ -82,12 +91,20 @@ const openDoorFxns = {
 			otherDoor.children('.door_split_left').on('transitionend', stopPropagation).addClass('door_split_left_open');
 			otherDoor.children('.door_split_right').on('transitionend', stopPropagation).addClass('door_split_right_open');
 		},
+		close:(door, otherDoor)=>{
+			door.children('.door_split_left').removeClass('door_split_left_open');
+			door.children('.door_split_right').on('transitionend', stopPropagation).removeClass('door_split_right_open');
+			otherDoor.children('.door_split_left').on('transitionend', stopPropagation).removeClass('door_split_left_open');
+			otherDoor.children('.door_split_right').on('transitionend', stopPropagation).removeClass('door_split_right_open');
+		},
 	},
 };
 
 const gameDebug = false; // allow wall passthrough
 // Which game action each key (or touch button, see playGame) stands for.
-const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D'};
+const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D',
+	// Dungeon only (the rules ignore them in a classic game): close the door ahead, wait a move.
+	'c':'C', 'C':'C', 'w':'W', 'W':'W'};
 
 class MazeHtml{
 	constructor(seed, maze) {
@@ -98,6 +115,10 @@ class MazeHtml{
 		this._debug = false;
 		this.mapHtml = this.generateMapHtml();
 		this.helpFxn = null;
+		// Dungeon games allow the C (close door) and W (wait) actions. Set before playGame.
+		this.dungeon = false;
+		// Called as fn(action, result) after every move that counts; see onMove().
+		this.moveHook = null;
 		this.music = null;
 		this.walls = [];
 		this.items = [];
@@ -574,6 +595,17 @@ PgDn Descend<br />
 		return null;
 	}
 	
+	/*
+	The move hook (see MazePlayer.onMove): fn(action, result) is called after every move the
+	rules count. Classic play installs nothing. A dungeon installs a TickLayer instead, so the
+	rules and the page share one clock; this method is for a page that wants to watch moves.
+	Call it before or after playGame.
+	*/
+	onMove(fn) {
+		this.moveHook = fn;
+		if (this.player) this.player.onMove = fn;
+	}
+
 	playGame(winFunc = null, loseFunc = null) {
 		const mapElement=$('#map');
 		const mazeElement=$('#maze');
@@ -676,7 +708,8 @@ PgDn Descend<br />
 		var mayProcessAction = true;
 		var alertTimeout = null;
 		// The game's rules: where the player is, keys held, moves made.
-		const player = new MazePlayer(maze, gameDebug);
+		const player = new MazePlayer(maze, gameDebug, this.dungeon);
+		player.onMove = this.moveHook;
 		this.player = player;
 		// True while an action is animating and the next key press has to wait.
 		this.isBusy = () => !!animationState || !mayProcessAction;
@@ -785,6 +818,22 @@ PgDn Descend<br />
 					animationState = 'door';
 					// Play the sound
 					playSound(localThis.getClip('door'));
+					return false; // action in progress
+				case 'close': {
+					const door = cell.html[pDir];
+					cell.play[pDir] = false;
+					const nextCell = maze.getNextCell(cell, pDir);
+					const oDoor = nextCell.html[opposite[pDir]];
+					nextCell.play[opposite[pDir]] = false;
+					openDoorFxns[localThis.keyList[result.key].open].close(door, oDoor);
+					animationState = 'close';
+					playSound(localThis.getClip('door'));
+					return false; // action in progress
+				}
+				case 'wait':
+					// Nothing moves, but the pace is the same as any other move.
+					animationState = 'wait';
+					setTimeout(() => eventQueue.push('animationStop'), 500);
 					return false; // action in progress
 				case 'turn':
 					pDir = player.dir;
@@ -896,6 +945,7 @@ PgDn Descend<br />
 					// Update the visit flag for this cell.
 					nextCell = maze.grid[pZ][pY][pX];
 					break;
+				case 'close':
 				case 'door':
 					// Update the door for this cell.
 					nextCell = maze.grid[pZ][pY][pX];

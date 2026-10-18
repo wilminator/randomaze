@@ -12,18 +12,32 @@ An action is one letter, and every action that counts as a move is recorded:
 	R  turn right
 	U  climb a ladder up
 	D  climb a ladder down
+A dungeon game (see below) adds two more:
+	C  close the open door ahead (a door that needs a key stays closed to monsters, and you
+	   keep the key, so you can always open it again)
+	W  wait a move
 Actions that do nothing (bumping a wall, a locked door, a missing ladder) are free and
 are not recorded, so a game's move count is always the length of its action string.
 The page can also pass the time of each move, which is kept alongside in `times`.
+
+Moves and ticks are separate layers. A move is what the maze's rules say it is, and the classic
+game knows nothing else. A tick is the dungeon's clock: monsters act on ticks. The player has a
+hook, `onMove(action, result)`, called after every move that counts. Classic play installs
+nothing. A dungeon installs a TickLayer (below), whose policy says which kinds of move cost a
+tick. This file is DOM-free, so the server's replay installs the same layer and gets the same ticks.
 */
 class MazePlayer {
 	static turnLeft = { 'N': 'W', 'W': 'S', 'S': 'E', 'E': 'N' };
 	static turnRight = { 'N': 'E', 'E': 'S', 'S': 'W', 'W': 'N' };
 
 	// debug lets the player walk through walls (never through the outside walls).
-	constructor(maze, debug = false) {
+	// dungeon turns on the actions only a dungeon has: C (close a door) and W (wait).
+	constructor(maze, debug = false, dungeon = false) {
 		this.maze = maze;
 		this.debug = debug;
+		this.dungeon = dungeon;
+		// Called as onMove(action, result) after every move that counts. See TickLayer.
+		this.onMove = null;
 		const start = maze.entranceList[0];
 		[this.z, this.y, this.x] = start.cell.loc;
 		this.dir = opposite[start.dir];
@@ -65,6 +79,8 @@ class MazePlayer {
 		{type: 'move'}               walked forward, back, up or down
 		{type: 'turn'}
 		{type: 'door', key}          opened the door ahead, which took key number `key`
+		{type: 'close', key}         dungeon only: closed the open door ahead (its key number)
+		{type: 'wait'}               dungeon only: let a move pass
 		{type: 'trap'}               tried to leave by an entrance that is not the exit;
 		                             its wall drops and that costs one move, once
 		{type: 'win'}                walked out of the exit
@@ -86,6 +102,8 @@ class MazePlayer {
 				result.pickedUp = key;
 			}
 		}
+		// Last, so the hook sees the finished result (including pickedUp).
+		if (this.onMove) this.onMove(action, result);
 		return result;
 	}
 
@@ -117,6 +135,17 @@ class MazePlayer {
 					return { type: 'door', key: cell.data[dir] };
 				}
 				return null;
+			case 'C':
+				// Only a door that is open can be closed. The key stays with the player.
+				if (this.dungeon && cell.data[dir] > 0 && this.isDoorOpen(cell, dir)) {
+					const next = this.maze.getNextCell(cell, dir);
+					this.openDoors.delete(`${cell.loc}${dir}`);
+					this.openDoors.delete(`${next.loc}${opposite[dir]}`);
+					return { type: 'close', key: cell.data[dir] };
+				}
+				return null;
+			case 'W':
+				return this.dungeon ? { type: 'wait' } : null;
 			case 'B': {
 				const back = opposite[dir];
 				if ((cell.data[back] === null && !this.isOutside(cell, back)) || (cell.data[back] > 0 && this.isDoorOpen(cell, back))) {
@@ -150,15 +179,41 @@ class MazePlayer {
 }
 
 /*
+The tick trigger (the dungeon's clock). Install it on a player and it counts a tick for every
+move whose type the policy allows, then calls onTick(tick, action, result) so the dungeon can
+let monsters act. The policy is content data: changing it changes the game, so records say
+which rules version they were played under.
+*/
+class TickLayer {
+	// Every kind of move costs a tick, turns included, as the design starts out.
+	static defaultPolicy = { move: true, turn: true, door: true, close: true, wait: true, trap: true, win: false };
+
+	constructor(player, onTick = null, policy = TickLayer.defaultPolicy) {
+		this.policy = policy;
+		this.onTick = onTick;
+		this.ticks = 0;
+		player.onMove = (action, result) => {
+			if (!this.policy[result.type]) return;
+			++this.ticks;
+			if (this.onTick) this.onTick(this.ticks, action, result);
+		};
+	}
+}
+
+/*
 Replays a finished game. Every action must count as a move and the last one must walk out
 of the exit, so a valid game's score is simply actions.length.
 Returns {valid: true, moves} or {valid: false, reason}.
+Pass {dungeon: true} to allow C and W and count ticks; the result then also has `ticks`.
+Other options: tickPolicy (see TickLayer) and onTick(tick, action, result).
 */
-function replayGame(maze, actions) {
+function replayGame(maze, actions, options = {}) {
 	if (typeof actions != 'string' || actions.length == 0) {
 		return { valid: false, reason: 'no actions' };
 	}
-	const player = new MazePlayer(maze);
+	const dungeon = !!options.dungeon;
+	const player = new MazePlayer(maze, false, dungeon);
+	const layer = dungeon ? new TickLayer(player, options.onTick, options.tickPolicy) : null;
 	for (let i = 0; i < actions.length; ++i) {
 		if (player.won) {
 			return { valid: false, reason: `actions continue after the win at ${i}` };
@@ -170,5 +225,5 @@ function replayGame(maze, actions) {
 	if (!player.won) {
 		return { valid: false, reason: 'the player never left the maze' };
 	}
-	return { valid: true, moves: player.moves };
+	return layer ? { valid: true, moves: player.moves, ticks: layer.ticks } : { valid: true, moves: player.moves };
 }
