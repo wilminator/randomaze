@@ -19,7 +19,9 @@ const ctx = { Math: Object.create(Math), console: { log() {} } };
 ctx.Math.seedrandom = seedrandom;
 vm.createContext(ctx);
 const dir = generatorDir(rootDir);
-for (const f of ['mazeutil.js', 'mazegen.js', 'mazeparams.js', 'mazeplayer.js'].map(name => `${dir}/${name}`)) {
+// dungeon.js is the combat layer; a copy of the engine from before it existed does not have it.
+const files = ['mazeutil.js', 'mazegen.js', 'mazeparams.js', 'mazeplayer.js', 'dungeon.js'].map(name => `${dir}/${name}`);
+for (const f of files.filter(f => fs.existsSync(path.join(rootDir, f)))) {
 	vm.runInContext(fs.readFileSync(path.join(rootDir, f), 'utf8'), ctx, { filename: f });
 }
 vm.runInContext(`
