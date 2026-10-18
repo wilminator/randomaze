@@ -30,3 +30,26 @@ node report.js 4                                                          # reco
 
 In Docker: `docker run --rm -v "$PWD":/w -w /w/tools/balance node:22 node tune.js 5 0.15`.
 No npm packages are needed.
+
+## Real-dungeon harness (`real.js`, `real-fit.js`)
+
+The abstract model above is a stand-in. These two scripts play the engine's own dungeon
+(`generator/dungeon.js`) with the stand-in player from `test/dungeon.test.js` (shortest route to the
+exit, attack, flee below 30% HP). There are no skills, potions or healing yet, so they measure the core
+loop only and must be re-run when those land.
+
+- `node real.js [days=6] [nonces=3] [bandWidth=4] [out]` plays every class x level x difficulty and
+  records deaths, XP, kills, fights and ticks. `CONTENT='{"monsterPower":0.1}'` overrides content.
+- `node real-fit.js [days] [nonces] [width]` bisects `monsterPower` (HP and ATK each scaled) until Easy
+  deaths hit 5%, 15% and 30%. `EXTRA` fixes other overrides; `TAG` names the output.
+
+Findings at width 4, monsterGrowth 0.15, traps off (traps alone kill 8-17% of runs, since nothing heals):
+
+| Easy deaths | Flat hero DEF (as built) | DEF +15% a level |
+|---|---|---|
+| 5% | x0.05 | x0.05 |
+| 15% | x0.11 | x0.12 |
+| 30% | x0.16 | x0.20 |
+
+Monsters need to be about 5-16% of their stated HP and ATK for this player to survive. Hero DEF growth
+barely changes that, so the gap is in the monster/hero ratio, not DEF alone.
