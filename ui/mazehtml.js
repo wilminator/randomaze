@@ -101,6 +101,58 @@ const openDoorFxns = {
 };
 
 const gameDebug = false; // allow wall passthrough
+
+/*
+Look variety. Walls, floors and doors are picked from what the page loaded, and the picks
+must be the same every time the same maze is shown. They come from a hash of the maze seed
+and the position, never from the seeded generator, so they do not change which key or door
+look any other part of the UI gets, and never touch the maze, the game's RNG or replays.
+*/
+
+// 32-bit FNV-1a hash of a list of values, as a number from 0 up to (not including) 1.
+function varietyRoll(...parts) {
+	let h = 2166136261;
+	for (const ch of parts.join('|')) {
+		h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0;
+	}
+	// FNV mixes its last characters weakly, so finish with a murmur-style avalanche.
+	h = Math.imul(h ^ (h >>> 16), 2246822507) >>> 0;
+	h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0;
+	h = (h ^ (h >>> 16)) >>> 0;
+	return h / 4294967296;
+}
+
+/*
+Pick one of `choices` for a patch of the maze. `base` (an index into choices) is the look
+the whole floor of the maze leans towards: it wins `baseShare` of the patches, and the rest
+go evenly to the other choices. A patch is the same pick for every cell inside it.
+*/
+function varietyPick(choices, base, baseShare, ...patch) {
+	if (choices.length <= 1) return choices[0];
+	const roll = varietyRoll(...patch);
+	if (roll < baseShare) return choices[base];
+	const others = choices.filter((_, i) => i != base);
+	return others[Math.min(others.length - 1, Math.floor((roll - baseShare) / (1 - baseShare) * others.length))];
+}
+
+/*
+Deal `count` indexes from 0..size-1 like cards: every index is used once before any repeats,
+and a new round never starts with the card that ended the last one. This is for things that
+should look different from each other, like the doors in one maze.
+*/
+function varietyDeal(size, count, ...salt) {
+	const dealt = [];
+	if (size == 0) return dealt;
+	for (let round = 0; dealt.length < count; ++round) {
+		const deck = [...Array(size).keys()]
+			.map(i => ({i, sort: varietyRoll(...salt, round, i)}))
+			.sort((a, b) => a.sort - b.sort)
+			.map(c => c.i);
+		if (deck.length > 1 && deck[0] === dealt[dealt.length - 1]) deck.push(deck.shift());
+		dealt.push(...deck);
+	}
+	return dealt.slice(0, count);
+}
 // Which game action each key (or touch button, see playGame) stands for.
 const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D',
 	// Dungeon only (the rules ignore them in a classic game): close the door ahead, wait a move.
@@ -124,6 +176,10 @@ class MazeHtml{
 		this.items = [];
 		this.doors = [];
 		this.clips = [];
+		// How the look of walls and floors varies inside one maze floor (see varietyPick).
+		// patch: how many cells wide a run of one look is. baseShare: how much of the maze
+		// floor uses its main look, from 0 to 1. Set baseShare to 1 for one look per floor.
+		this.variety = {wall:{patch:3, baseShare:0.6}, floor:{patch:2, baseShare:0.6}};
 		// Prefix for the images this file loads itself (the map's player marker), relative to the page.
 		// The site serves img/ next to its pages; a page elsewhere sets this, e.g. '../ui/'.
 		this.assetRoot = '';
@@ -140,12 +196,31 @@ class MazeHtml{
 		return undefined;
 	}
 
+	// The CSS class for the walls of the cell at this row and column.
+	wallTile(floor, row, column) {
+		const names = this.walls.filter(w=>w.tags.includes('wall')).map(w=>`wall_${w.name}`);
+		const main = this.wallTiles[floor];
+		const {patch, baseShare} = this.variety.wall;
+		return varietyPick(names, names.indexOf(main), baseShare,
+			this.seed, 'wall', floor, Math.floor(row / patch), Math.floor(column / patch));
+	}
+
+	// The CSS class for the floor of the cell at this row and column, or '' when no floor images were loaded.
+	floorTile(floor, row, column) {
+		const names = this.walls.filter(w=>w.tags.includes('floor')).map(w=>`floor_${w.name}`);
+		if (names.length == 0) return '';
+		const {patch, baseShare} = this.variety.floor;
+		return varietyPick(names, this.floorBase[floor] % names.length, baseShare,
+			this.seed, 'floor', floor, Math.floor(row / patch), Math.floor(column / patch));
+	}
+
 	loadWall(wall){
 		/*
 		{
 			name: name of the image
 			css: css definition for this wall
-			tags: array of possible use locations: wall, ceiling, or floor.
+			tags: array of possible use locations: wall, ceiling, or floor. A wall with the wall tag
+			      is used for walls, with the floor tag for the floor of each cell (it can have both).
 		}
 		*/
 		this.walls.push(wall);
@@ -392,7 +467,6 @@ class MazeHtml{
 		const html = [];
 		for (var floor = 0; floor < this.maze.floors; ++floor) {
 			const floorDiv = $('<div>').addClass('mazeFloor');
-			const wallCss = this.wallTiles[floor];
 			html.push(floorDiv);
 			for (var row = 0; row < this.maze.rows; ++row) {
 				for (var column = 0; column < this.maze.columns; ++column) {
@@ -400,7 +474,7 @@ class MazeHtml{
 					const px = 100 * column; // left-right
 					const pz = 100 * row; // front-back
 					const contents = $('<div>').addClass('offset contents').css('transform', `translate3d(${px}vmin, 0vmin, ${pz}vmin)`);
-					const fTile = $('<div>').addClass('offset floor').css('transform', `translate3d(${px}vmin, 50vmin, ${pz}vmin) rotateX(90deg)`);
+					const fTile = $('<div>').addClass(`offset floor ${this.floorTile(floor, row, column)}`).css('transform', `translate3d(${px}vmin, 50vmin, ${pz}vmin) rotateX(90deg)`);
 					const cTile = $('<div>').addClass('offset ceiling').css('transform', `translate3d(${px}vmin, -50vmin, ${pz}vmin) rotateX(90deg)`);
 					cell.html={contents:contents,floor:fTile,ceiling:cTile};
 					const entrance = this.maze.entranceList.filter(e=>e.cell === cell);
@@ -412,6 +486,7 @@ class MazeHtml{
 						const ry = wallRotate[dir];
 						const css = `translate3d(${px+ 50 * dx[dir]}vmin, 0vmin, ${pz+ 50 * dy[dir]}vmin) rotateY(${ry})`;
 						const elem = $('<div>').addClass('offset tile').css('transform', css);
+						const wallCss = this.wallTile(floor, row, column);
 						floorDiv.append(elem);
 						// Store this element for manipulation.
 						cell.html[dir] = elem;
@@ -634,13 +709,19 @@ PgDn Descend<br />
 
 		// Walls
 		// Load in wall resources
+		// An image tagged both wall and floor gets a rule for each use.
 		for (const wall of this.walls){
-			const name = `wall_${wall.name}`;
-			const item = this.styleSheet.insertRule(`.${name} {${wall.css}}`);
-			this.cssRules[name] = this.styleSheet.cssRules[item];
+			for (const use of ['wall', 'floor']) {
+				if (!wall.tags.includes(use)) continue;
+				const name = `${use}_${wall.name}`;
+				const item = this.styleSheet.insertRule(`.${name} {${wall.css}}`);
+				this.cssRules[name] = this.styleSheet.cssRules[item];
+			}
 		}
-		// Generate one wall tile per floor.
+		// Generate the main wall tile of each maze floor. The tiles of the other cells vary from it (see wallTile).
 		this.wallTiles = [...Array(this.maze.floors)].map(_=>`wall_${this.selectRandomTag(this.walls,'wall').name}`);
+		// Each maze floor leans towards one floor image the same way, if any were loaded.
+		this.floorBase = [...Array(this.maze.floors)].map((_, f)=>Math.floor(varietyRoll(this.seed, 'floorbase', f) * 4294967296));
 
 		// Keys and Doors
 		// Generate one key for each key in the maze.		
@@ -650,10 +731,13 @@ PgDn Descend<br />
 			.sort((a, b) => a.sort - b.sort)
 			.map(({ value }) => value);
 		this.keyList = {};
+		// One extra deal covers the keyless doors, if the maze has any.
+		const doorDeal = varietyDeal(this.doors.length, keyCells.length + 1, this.seed, 'door');
+		let doorsMade = 0;
 		// Picks how the door for lock number `key` looks and opens, and adds its css.
 		const addDoorStyle = (key, keyObj) => {
-			// Pick the door type for this key.
-			const door = this.doors[this.generateInt(this.doors.length)];
+			// Pick the door type for this lock. Doors are dealt out so a maze shows as many looks as it can.
+			const door = this.doors[doorDeal[doorsMade++]];
 			// Pick a door function and tag this door with it.
 			keyObj.open = door.tags[this.generateInt(door.tags.length)];
 			// Create the door css
