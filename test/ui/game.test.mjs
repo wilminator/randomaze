@@ -332,7 +332,7 @@ function holeScript(pit) {
 }
 
 // A game with several wall, floor and door images loaded, to see how they are spread over the maze.
-function lookScript(type, seed, floorImages) {
+function lookScript(type, seed, floorImages, ceilingImages = 0) {
 	return `
 		const params = new MazeParameters(${type}, ${seed});
 		const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
@@ -340,6 +340,7 @@ function lookScript(type, seed, floorImages) {
 		const mazehtml = new MazeHtml(params.htmlSeed, maze);
 		for (const n of ['w1', 'w2', 'w3']) mazehtml.loadWall({name: n, css: 'background: gray;', tags: ['wall']});
 		for (let i = 0; i < ${floorImages}; ++i) mazehtml.loadWall({name: 'f' + i, css: 'background: tan;', tags: ['floor']});
+		for (let i = 0; i < ${ceilingImages}; ++i) mazehtml.loadWall({name: 'c' + i, css: 'background: silver;', tags: ['ceiling']});
 		for (const c of ['red', 'blue', 'green']) mazehtml.loadDoor({css: 'background: ' + c + ';', tags: ['split']});
 		for (let i = 0; i < 24; ++i) {
 			mazehtml.loadItem({name: 'Key ' + i, initials: 'K' + i, src: '', invsrc: '', css: '', tags: ['key'], doorcolor: '#FF0000'});
@@ -388,25 +389,28 @@ test('walking onto a pit drops the player to the floor below', async () => {
 async function looks(page) {
 	return page.evaluate(() => ({
 		walls: [...document.querySelectorAll('.tile')].map(e => [...e.classList].filter(c => c.startsWith('wall_')).join()).join(';'),
+		ceilings: [...document.querySelectorAll('.ceiling:not(.outside)')].map(e => [...e.classList].filter(c => c.startsWith('ceiling_')).join()).join(';'),
 		floors: [...document.querySelectorAll('.floor:not(.outside)')].map(e => [...e.classList].filter(c => c.startsWith('floor_')).join()).join(';'),
 	}));
 }
 
 test('walls and floors vary within a maze, and look the same when it is reloaded', async () => {
-	const first = await openDemo('', lookScript(1, 11, 3));
+	const first = await openDemo('', lookScript(1, 11, 3, 3));
 	assert.deepStrictEqual(first.errors, []);
 	const a = await looks(first.page);
 	const used = text => new Set(text.split(';').flatMap(x => x.split(',')).filter(Boolean));
 	assert.ok(used(a.walls).size > 1, 'more than one wall image is used');
 	assert.ok(used(a.floors).size > 1, 'more than one floor image is used');
-	const second = await openDemo('', lookScript(1, 11, 3));
+	assert.ok(used(a.ceilings).size > 1, 'more than one ceiling image is used');
+	const second = await openDemo('', lookScript(1, 11, 3, 3));
 	assert.deepStrictEqual(await looks(second.page), a);
 });
 
-test('with no floor images the floors keep their plain colour', async () => {
+test('with no floor or ceiling images they keep their plain colour', async () => {
 	const { page, errors } = await openDemo('', lookScript(1, 11, 0));
 	assert.deepStrictEqual(errors, []);
 	assert.deepStrictEqual((await looks(page)).floors.replaceAll(';', ''), '');
+	assert.deepStrictEqual((await looks(page)).ceilings.replaceAll(';', ''), '');
 	assert.ok(await page.locator('.floor').count() > 0);
 });
 
