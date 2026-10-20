@@ -15,10 +15,11 @@ function lookups(walls, seed = 'seed', floors = 2) {
 	const m = Object.create(MazeHtml.prototype);
 	m.seed = seed;
 	m.walls = walls;
-	m.variety = { wall: { patch: 3, baseShare: 0.6 }, floor: { patch: 2, baseShare: 0.6 } };
+	m.variety = { wall: { patch: 3, baseShare: 0.6 }, floor: { patch: 2, baseShare: 0.6 }, ceiling: { patch: 2, baseShare: 0.6 } };
 	const wallOnly = walls.filter(w => w.tags.includes('wall'));
 	m.wallTiles = [...Array(floors)].map((_, f) => wallOnly.length ? `wall_${wallOnly[f % wallOnly.length].name}` : '');
 	m.floorBase = [...Array(floors)].map((_, f) => Math.floor(varietyRoll(seed, 'floorbase', f) * 4294967296));
+	m.ceilingBase = [...Array(floors)].map((_, f) => Math.floor(varietyRoll(seed, 'ceilingbase', f) * 4294967296));
 	return m;
 }
 const img = (name, ...tags) => ({ name, css: '', tags });
@@ -135,4 +136,29 @@ test('floorTile: varies in 2 by 2 patches, uses only floor images, and is repeat
 		assert.strictEqual(t, lookups(walls).floorTile(1, r, c));
 	}
 	assert.strictEqual(seen.size, 3);
+});
+
+test('ceilingTile: no ceiling images gives no class, so the old colour stays', () => {
+	assert.strictEqual(lookups([img('a', 'wall'), img('f', 'floor')]).ceilingTile(0, 3, 3), '');
+});
+
+test('ceilingTile: varies in patches, uses only ceiling images, is repeatable and independent of floors', () => {
+	const walls = [img('a', 'wall'), img('f1', 'floor'), img('c1', 'ceiling'), img('c2', 'ceiling'), img('c3', 'ceiling', 'floor')];
+	const m = lookups(walls);
+	const seen = new Set();
+	for (let r = 0; r < 40; ++r) for (let c = 0; c < 40; ++c) {
+		const t = m.ceilingTile(0, r, c);
+		seen.add(t);
+		assert.ok(t.startsWith('ceiling_') && t != 'ceiling_f1');
+		assert.strictEqual(t, m.ceilingTile(0, r - r % 2, c - c % 2));
+		assert.strictEqual(t, lookups(walls).ceilingTile(0, r, c));
+	}
+	assert.strictEqual(seen.size, 3);
+	// An image tagged floor and ceiling does not make the floor pick follow the ceiling pick.
+	let same = 0, total = 0;
+	for (let r = 0; r < 40; r += 2) for (let c = 0; c < 40; c += 2) {
+		total++;
+		same += m.floorTile(0, r, c).replace('floor_', '') == m.ceilingTile(0, r, c).replace('ceiling_', '');
+	}
+	assert.ok(same < total);
 });
