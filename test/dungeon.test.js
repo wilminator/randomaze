@@ -622,7 +622,7 @@ test('Mage: Firebolt ignores DEF and needs no to-hit roll', () => {
 	game.dice.queue.push(0.5);                     // spell 9 x 1.0 = 9, whatever the orc\'s DEF
 	run(game, '1');
 	assert.strictEqual(game.monsters[0].hp, 28 - 9);
-	assert.strictEqual(game.sp, 13);
+	assert.strictEqual(game.sp, 14);
 });
 
 test('Cleric: Heal restores 40% of max HP, in a fight or out of one', () => {

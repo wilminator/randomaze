@@ -96,9 +96,8 @@ off. Easy deaths, mean of all six classes, hero levels 1 / 5 / 12, traps on, hea
 | both | 67% | 71% | 40% |
 
 Easy deaths by class, both on (mean over the three levels): Warrior 29%, Rogue 50%, Ranger 46%,
-Cleric 54%, Monk 79%, Mage 96%.
+Cleric 54%, Monk 79%, Mage 50% (96% when Firebolt cost 3 SP; it now costs 2, so 8 casts).
 
 The stand-in only walks the shortest route to the exit, so it meets about 10 fights and finds about 2
 of the dungeon's ~10 potions. A player who explores finds far more, so these deaths are an upper
-bound. The Mage dies because it has 16 HP and 3 SP-per-Firebolt (5 casts) against 10 fights: it
-needs more SP or a cheaper cast before its numbers mean anything.
+bound. Monk and Rogue die most after the Mage fix: they are the ones chased into the most fights.

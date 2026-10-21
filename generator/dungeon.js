@@ -88,7 +88,7 @@ const DUNGEON_CONTENT = {
 	skills: {
 		warrior: { name: 'Power Strike', kind: 'power-strike', sp: 2, mult: 1.8 },
 		rogue:   { name: 'Backstab',     kind: 'backstab',     sp: 2, mult: 3 },
-		mage:    { name: 'Firebolt',     kind: 'firebolt',     sp: 3 },
+		mage:    { name: 'Firebolt',     kind: 'firebolt',     sp: 2 },
 		cleric:  { name: 'Heal',         kind: 'heal',         sp: 4, heal: 0.4 },
 		ranger:  { name: 'Aimed Shot',   kind: 'aimed-shot',   sp: 2, mult: 1.5, range: 6 },
 		monk:    { name: 'Flurry',       kind: 'flurry',       sp: 3, mult: 0.5, hits: 3 },
