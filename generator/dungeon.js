@@ -82,7 +82,8 @@ const DUNGEON_CONTENT = {
 
 	// The level 1 skill of each class, used with key 1 (design 7.2). `sp` is the cost.
 	//   power-strike  a hit worth `mult` x damage            backstab   `mult` x, on a first strike only
-	//   firebolt      spell damage that ignores DEF          heal       restores `heal` of max HP
+	//   firebolt      spell damage that ignores DEF; out of a fight, burns a monster in the next cell
+	//   heal          restores `heal` of max HP
 	//   aimed-shot    a `mult` x hit; out of a fight, shoots a monster in line within `range` cells
 	//   flurry        `hits` hits, each worth `mult` x
 	skills: {
@@ -913,6 +914,7 @@ class DungeonGame {
 		if (this.sp < k.sp) return `not enough SP for ${k.name}`;
 		if (k.kind == 'heal') return this.hp >= this.stats.maxHp ? 'already at full health' : null;
 		if (k.kind == 'aimed-shot') return inFight || this.shotTarget(k.range) ? null : 'nothing in line to shoot';
+		if (k.kind == 'firebolt') return inFight || this.shotTarget(1) ? null : 'nothing in the next cell to burn';
 		if (!inFight) return `${k.name} is used in a fight`;
 		if (k.kind == 'backstab' && !(this.fight.round == 0 && this.fight.firstStrike)) return 'Backstab needs a first strike';
 		return null;
@@ -925,16 +927,19 @@ class DungeonGame {
 		++this.counts.skills;
 		this.emit({ type: 'skill', skill: k.kind });
 		if (k.kind == 'heal') this.healSelf(k);
-		else if (k.kind == 'firebolt') {
-			++this.counts.attacks;
-			const damage = Math.max(1, Math.round(this.stats.spell * (0.85 + 0.3 * this.dice.next())));
-			this.emit({ type: 'hero-attack', monster: m.id, damage });
-			this.hitMonster(m, damage);
-		}
+		else if (k.kind == 'firebolt') this.firebolt(m);
 		else if (k.kind == 'flurry') {
 			for (let i = 0; i < k.hits && this.fight; ++i) this.heroAttacks(m, k.mult);
 		}
 		else this.heroAttacks(m, k.mult);   // power-strike, backstab, aimed-shot
+	}
+
+	// Spell damage ignores DEF and needs no to-hit roll.
+	firebolt(m) {
+		++this.counts.attacks;
+		const damage = Math.max(1, Math.round(this.stats.spell * (0.85 + 0.3 * this.dice.next())));
+		this.emit({ type: 'hero-attack', monster: m.id, damage });
+		this.hitMonster(m, damage);
 	}
 
 	healSelf(k) {
@@ -943,7 +948,7 @@ class DungeonGame {
 		this.emit({ type: 'heal', healed });
 	}
 
-	// The skill outside a fight: Heal, or Aimed Shot at a monster in line. Costs a tick.
+	// The skill outside a fight: Heal, Aimed Shot at a monster in line, or Firebolt at one in the next cell. Costs a tick.
 	useSkillExploring() {
 		const refusal = this.skillRefusal(false);
 		if (refusal) return { ok: false, reason: refusal };
@@ -952,6 +957,11 @@ class DungeonGame {
 		++this.counts.skills;
 		this.emit({ type: 'skill', skill: k.kind });
 		if (k.kind == 'heal') this.healSelf(k);
+		else if (k.kind == 'firebolt') {
+			const m = this.shotTarget(1);
+			this.firebolt(m);
+			if (m.alive) { m.state = 'chase'; m.target = this.playerCell(); }
+		}
 		else {
 			const m = this.shotTarget(k.range);
 			++this.counts.attacks;

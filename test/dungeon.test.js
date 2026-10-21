@@ -625,6 +625,23 @@ test('Mage: Firebolt ignores DEF and needs no to-hit roll', () => {
 	assert.strictEqual(game.sp, 14);
 });
 
+test('Mage: Firebolt out of a fight burns a monster in the next cell, and only that close', () => {
+	const near = setup({ content: blind(), monsters: [{ species: 'orc', col: 1 }], heroOver: { cls: 'mage' } });
+	near.dice.queue.push(0.5);                     // 9 damage, no to-hit roll
+	const ticks = near.ticks;
+	run(near, '1');
+	assert.strictEqual(near.monsters[0].hp, 28 - 9);
+	assert.strictEqual(near.sp, 14);
+	assert.strictEqual(near.ticks, ticks + 1);
+	assert.strictEqual(near.monsters[0].state, 'chase', 'the orc comes for the hero');
+	const weak = setup({ content: blind(), monsters: [{ species: 'rat', col: 1 }], heroOver: { cls: 'mage' } });
+	weak.dice.queue.push(0.5);
+	run(weak, '1');
+	assert.strictEqual(weak.kills, 1, 'a rat burns to death without a fight');
+	const far = setup({ content: blind(), monsters: [{ species: 'rat', col: 2 }], heroOver: { cls: 'mage' } });
+	assert.strictEqual(far.act('1').reason, 'nothing in the next cell to burn');
+});
+
 test('Cleric: Heal restores 40% of max HP, in a fight or out of one', () => {
 	const game = setup({ content: pinned(), monsters: [{ species: 'orc', col: 3 }], heroOver: { cls: 'cleric' } });
 	assert.strictEqual(game.act('1').reason, 'already at full health');
