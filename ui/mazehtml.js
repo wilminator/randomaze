@@ -108,19 +108,6 @@ function varietyRoll(...parts) {
 }
 
 /*
-Pick one of `choices` for a patch of the maze. `base` (an index into choices) is the look
-the whole floor of the maze leans towards: it wins `baseShare` of the patches, and the rest
-go evenly to the other choices. A patch is the same pick for every cell inside it.
-*/
-function varietyPick(choices, base, baseShare, ...patch) {
-	if (choices.length <= 1) return choices[0];
-	const roll = varietyRoll(...patch);
-	if (roll < baseShare) return choices[base];
-	const others = choices.filter((_, i) => i != base);
-	return others[Math.min(others.length - 1, Math.floor((roll - baseShare) / (1 - baseShare) * others.length))];
-}
-
-/*
 Deal `count` indexes from 0..size-1 like cards: every index is used once before any repeats,
 and a new round never starts with the card that ended the last one. This is for things that
 should look different from each other, like the doors in one maze.
@@ -138,6 +125,184 @@ function varietyDeal(size, count, ...salt) {
 	}
 	return dealt.slice(0, count);
 }
+/*
+Look regions. Each floor of the maze is cut into regions, and a whole region shares one look
+(a wall image paired with a floor image), so you feel like you are in one area of the maze.
+
+Borders go where a door is: the cells you can reach from each other without passing a door
+make one region. A region bigger than about `target` cells is cut into several large regions so the
+look still changes mid-area. No region is under `min` cells (a closet behind a door joins the
+region next to it), so there are never small outcrops.
+Everything depends only on the maze layout and its seed.
+
+Returns, for each maze floor, a grid of region numbers (regions[floor][row][column]).
+*/
+function lookRegions(maze, seed, {target = 45, min = 12} = {}) {
+	const dirStep = {N: [-1, 0], S: [1, 0], W: [0, -1], E: [0, 1]};
+	const opp = {N: 'S', S: 'N', W: 'E', E: 'W'};
+	return [...Array(maze.floors)].map((_, floor) => {
+		const rows = maze.rows, cols = maze.columns, count = rows * cols;
+		const at = i => maze.grid[floor][Math.floor(i / cols)][i % cols];
+		// Neighbours reached without passing a door. A one-way wall counts as open.
+		const open = [...Array(count)].map(() => []);
+		// Neighbours across a door.
+		const doorway = [...Array(count)].map(() => []);
+		for (let i = 0; i < count; ++i) {
+			const r = Math.floor(i / cols), c = i % cols;
+			for (const dir in dirStep) {
+				const nr = r + dirStep[dir][0], nc = c + dirStep[dir][1];
+				if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue;
+				const here = at(i).data[dir], there = maze.grid[floor][nr][nc].data[opp[dir]];
+				const door = (typeof here == 'number' && here >= 1) || (typeof there == 'number' && there >= 1);
+				if (door) doorway[i].push(nr * cols + nc);
+				else if (here === null || there === null) open[i].push(nr * cols + nc);
+			}
+		}
+		// Make the passages two-way for flood fills (a one-way wall is open from one side only).
+		for (let i = 0; i < count; ++i) for (const j of open[i]) if (!open[j].includes(i)) open[j].push(i);
+
+		const region = Array(count).fill(-1);
+		let regionCount = 0;
+		const components = [];
+		for (let start = 0; start < count; ++start) {
+			if (region[start] >= 0) continue;
+			const cells = [start];
+			region[start] = regionCount;
+			for (let k = 0; k < cells.length; ++k) {
+				for (const j of open[cells[k]]) if (region[j] < 0) { region[j] = regionCount; cells.push(j); }
+			}
+			components.push(cells);
+			++regionCount;
+		}
+
+		// Cut big door-free areas into a few large regions.
+		for (const cells of components) {
+			const pieces = Math.round(cells.length / target);
+			if (pieces < 2) continue;
+			const inside = new Set(cells);
+			// Distance from the nearest seed to every cell of this area.
+			const distanceFrom = seeds => {
+				const dist = new Map(seeds.map(s => [s, 0]));
+				const queue = [...seeds];
+				for (let k = 0; k < queue.length; ++k) {
+					for (const j of open[queue[k]]) if (!dist.has(j)) { dist.set(j, dist.get(queue[k]) + 1); queue.push(j); }
+				}
+				return dist;
+			};
+			// Seeds: the first by a roll, each next one as far as possible from the others.
+			const roll = i => varietyRoll(seed, 'region', floor, i);
+			const seeds = [cells.reduce((a, b) => roll(b) < roll(a) ? b : a)];
+			while (seeds.length < pieces) {
+				const dist = distanceFrom(seeds);
+				seeds.push(cells.reduce((a, b) => dist.get(b) > dist.get(a) || (dist.get(b) == dist.get(a) && roll(b) < roll(a)) ? b : a));
+			}
+			// Each seed grows outwards together, one step at a time, so each piece is a connected blob.
+			const owner = new Map(seeds.map((s, p) => [s, p]));
+			const queue = [...seeds];
+			for (let k = 0; k < queue.length; ++k) {
+				for (const j of open[queue[k]]) if (!owner.has(j)) { owner.set(j, owner.get(queue[k])); queue.push(j); }
+			}
+			// Fold pieces under `min` cells into the neighbour they touch most.
+			const sizes = seeds.map(() => 0);
+			for (const i of cells) sizes[owner.get(i)]++;
+			for (;;) {
+				const alive = sizes.map((n, p) => ({n, p})).filter(x => x.n > 0);
+				const small = alive.filter(x => x.n < min).sort((a, b) => a.n - b.n || a.p - b.p)[0];
+				if (!small || alive.length < 2) break;
+				const touch = new Map();
+				for (const i of cells) {
+					if (owner.get(i) != small.p) continue;
+					for (const j of open[i]) if (owner.get(j) != small.p) touch.set(owner.get(j), (touch.get(owner.get(j)) || 0) + 1);
+				}
+				const into = [...touch.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+				for (const i of cells) if (owner.get(i) == small.p) owner.set(i, into);
+				sizes[into] += sizes[small.p];
+				sizes[small.p] = 0;
+			}
+			// The first piece keeps the area's region number; the others get new ones.
+			const numbers = new Map();
+			for (const i of cells) {
+				const p = owner.get(i);
+				if (!numbers.has(p)) numbers.set(p, numbers.size == 0 ? region[cells[0]] : regionCount++);
+				region[i] = numbers.get(p);
+			}
+		}
+
+		// A tiny room behind a door would look like an outcrop too: fold any region under `min`
+		// cells into the region it touches most (through openings or doors).
+		for (;;) {
+			const sizes = new Map();
+			for (const n of region) sizes.set(n, (sizes.get(n) || 0) + 1);
+			if (sizes.size < 2) break;
+			let merged = false;
+			for (const [id] of [...sizes].filter(([, n]) => n < min).sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
+				const touch = new Map();
+				for (let i = 0; i < count; ++i) {
+					if (region[i] != id) continue;
+					for (const j of [...open[i], ...doorway[i]]) if (region[j] != id) touch.set(region[j], (touch.get(region[j]) || 0) + 1);
+				}
+				if (touch.size == 0) {
+					// Only stairs lead here: go with whatever lies next door, wall or not.
+					for (let i = 0; i < count; ++i) {
+						if (region[i] != id) continue;
+						for (const [dr, dc] of Object.values(dirStep)) {
+							const r = Math.floor(i / cols) + dr, c = i % cols + dc;
+							if (r < 0 || c < 0 || r >= rows || c >= cols || region[r * cols + c] == id) continue;
+							touch.set(region[r * cols + c], (touch.get(region[r * cols + c]) || 0) + 1);
+						}
+					}
+				}
+				const into = [...touch.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+				for (let i = 0; i < count; ++i) if (region[i] == id) region[i] = into;
+				merged = true;
+				break;
+			}
+			if (!merged) break;
+		}
+
+		// Renumber in order of first appearance, and return a row by column grid.
+		const renumber = new Map();
+		for (let i = 0; i < count; ++i) if (!renumber.has(region[i])) renumber.set(region[i], renumber.size);
+		return [...Array(rows)].map((_, r) => [...Array(cols)].map((_, c) => renumber.get(region[r * cols + c])));
+	});
+}
+
+/*
+Give every region of every floor a look from `looks` (a list of {wall, floor, ceiling} class names).
+Touching regions (across a door or an opening) avoid sharing a wall, a floor, or the same look, and
+a floor tries to use as many different looks as it can. Returns looks[floor][region].
+*/
+function lookAssign(maze, regions, looks, seed) {
+	return regions.map((grid, floor) => {
+		const regionCount = Math.max(-1, ...grid.flat()) + 1;
+		const touching = [...Array(regionCount)].map(() => new Set());
+		for (let r = 0; r < maze.rows; ++r) for (let c = 0; c < maze.columns; ++c) {
+			for (const [nr, nc] of [[r + 1, c], [r, c + 1]]) {
+				if (nr < maze.rows && nc < maze.columns && grid[nr][nc] != grid[r][c]) {
+					const edgeless = maze.grid[floor][r][c].data[nr > r ? 'S' : 'E'] === 0 && maze.grid[floor][nr][nc].data[nr > r ? 'N' : 'W'] === 0;
+					if (!edgeless) { touching[grid[r][c]].add(grid[nr][nc]); touching[grid[nr][nc]].add(grid[r][c]); }
+				}
+			}
+		}
+		const chosen = [];
+		const used = looks.map(() => 0);
+		for (let region = 0; region < regionCount; ++region) {
+			const neighbours = [...touching[region]].filter(n => chosen[n] !== undefined).map(n => looks[chosen[n]]);
+			const cost = look => {
+				const i = looks.indexOf(look);
+				const clash = neighbours.reduce((sum, n) => sum + (n === look ? 4 : 0) + (n.wall == look.wall ? 2 : 0) + (n.floor == look.floor ? 1 : 0), 0);
+				return clash * 100 + used[i];
+			};
+			const best = Math.min(...looks.map(cost));
+			const candidates = looks.map((look, i) => i).filter(i => cost(looks[i]) == best);
+			const pick = candidates[Math.floor(varietyRoll(seed, 'look', floor, region) * candidates.length)];
+			chosen[region] = pick;
+			used[pick]++;
+		}
+		return chosen.map(i => looks[i]);
+	});
+}
+
 // Which game action each key (or touch button, see playGame) stands for.
 const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D'};
 
@@ -158,10 +323,12 @@ class MazeHtml{
 		this.items = [];
 		this.doors = [];
 		this.clips = [];
-		// How the look of walls and floors varies inside one maze floor (see varietyPick).
-		// patch: how many cells wide a run of one look is. baseShare: how much of the maze
-		// floor uses its main look, from 0 to 1. Set baseShare to 1 for one look per floor.
-		this.variety = {wall:{patch:3, baseShare:0.6}, floor:{patch:2, baseShare:0.6}, ceiling:{patch:2, baseShare:0.6}};
+		// The looks a region of the maze can have, each a wall image paired with a floor image
+		// (see loadLook). Without any, every loaded wall pairs with every loaded floor.
+		this.looks = [];
+		// How big the look regions are, in cells (see lookRegions). A door-free area bigger than
+		// about `target` cells is cut into pieces; no cut piece is smaller than `min`.
+		this.regionSize = {target: 45, min: 12};
 		// Prefix for the images this file loads itself (the map's player marker), relative to the page.
 		// The site serves img/ next to its pages; a page elsewhere sets this, e.g. '../ui/'.
 		this.assetRoot = '';
@@ -181,31 +348,46 @@ class MazeHtml{
 		return undefined;
 	}
 
+	// The look (wall, floor and ceiling classes) of the region the cell at this row and column is in.
+	cellLook(floor, row, column) {
+		return this.regionLooks[floor][this.regions[floor][row][column]];
+	}
+
 	// The CSS class for the walls of the cell at this row and column.
 	wallTile(floor, row, column) {
-		const names = this.walls.filter(w=>w.tags.includes('wall')).map(w=>`wall_${w.name}`);
-		const main = this.wallTiles[floor];
-		const {patch, baseShare} = this.variety.wall;
-		return varietyPick(names, names.indexOf(main), baseShare,
-			this.seed, 'wall', floor, Math.floor(row / patch), Math.floor(column / patch));
+		return this.cellLook(floor, row, column).wall;
 	}
 
 	// The CSS class for the floor of the cell at this row and column, or '' when no floor images were loaded.
 	floorTile(floor, row, column) {
-		const names = this.walls.filter(w=>w.tags.includes('floor')).map(w=>`floor_${w.name}`);
-		if (names.length == 0) return '';
-		const {patch, baseShare} = this.variety.floor;
-		return varietyPick(names, this.floorBase[floor] % names.length, baseShare,
-			this.seed, 'floor', floor, Math.floor(row / patch), Math.floor(column / patch));
+		return this.cellLook(floor, row, column).floor;
 	}
 
 	// The CSS class for the ceiling of the cell at this row and column, or '' when no ceiling images were loaded.
 	ceilingTile(floor, row, column) {
-		const names = this.walls.filter(w=>w.tags.includes('ceiling')).map(w=>`ceiling_${w.name}`);
-		if (names.length == 0) return '';
-		const {patch, baseShare} = this.variety.ceiling;
-		return varietyPick(names, this.ceilingBase[floor] % names.length, baseShare,
-			this.seed, 'ceiling', floor, Math.floor(row / patch), Math.floor(column / patch));
+		return this.cellLook(floor, row, column).ceiling;
+	}
+
+	/*
+	Add a look that regions of the maze can have: a wall image paired with a floor image, both
+	given by the name used in loadWall (and optionally a ceiling image). Any pair that looks good
+	together may be loaded; a wall or floor can be in as many pairs as you like.
+	*/
+	loadLook(look) {
+		this.looks.push(look);
+	}
+
+	// The looks to use: the ones loaded, or else every wall image with every floor image.
+	availableLooks() {
+		const classes = (look) => ({
+			wall: look.wall ? `wall_${look.wall}` : '',
+			floor: look.floor ? `floor_${look.floor}` : '',
+			ceiling: look.ceiling ? `ceiling_${look.ceiling}` : '',
+		});
+		if (this.looks.length > 0) return this.looks.map(classes);
+		const walls = this.walls.filter(w=>w.tags.includes('wall')).map(w=>w.name);
+		const floors = this.walls.filter(w=>w.tags.includes('floor')).map(w=>w.name);
+		return walls.flatMap(wall => (floors.length ? floors : [null]).map(floor => classes({wall, floor})));
 	}
 
 	loadWall(wall){
@@ -718,11 +900,13 @@ PgDn Descend<br />
 				this.cssRules[name] = this.styleSheet.cssRules[item];
 			}
 		}
-		// Generate the main wall tile of each maze floor. The tiles of the other cells vary from it (see wallTile).
-		this.wallTiles = [...Array(this.maze.floors)].map(_=>`wall_${this.selectRandomTag(this.walls,'wall').name}`);
-		// Each maze floor leans towards one floor image the same way, if any were loaded.
-		this.floorBase = [...Array(this.maze.floors)].map((_, f)=>Math.floor(varietyRoll(this.seed, 'floorbase', f) * 4294967296));
-		this.ceilingBase = [...Array(this.maze.floors)].map((_, f)=>Math.floor(varietyRoll(this.seed, 'ceilingbase', f) * 4294967296));
+		// Cut each maze floor into regions and give each region its look (see lookRegions).
+		this.regions = lookRegions(this.maze, this.seed, this.regionSize);
+		this.regionLooks = lookAssign(this.maze, this.regions, this.availableLooks(), this.seed);
+		// Looks without a ceiling of their own take a loaded ceiling image, if any, by region.
+		const ceilings = this.walls.filter(w=>w.tags.includes('ceiling')).map(w=>`ceiling_${w.name}`);
+		this.regionLooks = this.regionLooks.map((floorLooks, f) => floorLooks.map((look, r) => look.ceiling || !ceilings.length ? look :
+			{...look, ceiling: ceilings[Math.floor(varietyRoll(this.seed, 'ceiling', f, r) * ceilings.length)]}));
 
 		// Keys and Doors
 		// Generate one key for each key in the maze.		
@@ -911,7 +1095,7 @@ PgDn Descend<br />
 				case 'trap':
 					// And the walls come tumbling down!
 					const fauxWall = cell.html[pDir];
-					const wallCss = localThis.wallTiles[pZ];
+					const wallCss = localThis.wallTile(pZ, pY, pX);
 					const wall = $('<div>').addClass(`offset tile ${wallCss} trapEntrance`).css('transform', 'translate3d(-50vmin, -150vmin, 0vmin)');
 					fauxWall.append(wall);
 					// Pop onto the event queue or it will not animate.
