@@ -25,6 +25,9 @@ const override = JSON.parse(process.env.CONTENT ?? '{}');
 const LEVELS = (process.env.LEVELS ?? '1,2,5,8,11,14,17,20').split(',').map(Number);
 const DIFFS = (process.env.DIFFS ?? '0,1,2').split(',').map(Number);
 const QUIET = !!process.env.QUIET;
+// HEAL=<share>: after each fight the hero recovers that share of max HP (1 = full). Stands in for the
+// potions, Heal skill and rests that do not exist yet, to show how much sustain the design numbers need.
+const HEAL = Number(process.env.HEAL ?? 0);
 
 const ctx = load(path.join(__dirname, '..', '..'));
 const DungeonGame = vm.runInContext('DungeonGame', ctx);
@@ -36,7 +39,8 @@ const content = JSON.parse(JSON.stringify(BASE));
 if (override.trapDamage) Object.assign(content.trapDamage, override.trapDamage);   // e.g. {"spikes":0,"dart":0}
 for (const k of ['monsterGrowth', 'monsterXpGrowth', 'cellsPerMonster']) if (override[k] !== undefined) content[k] = override[k];
 if (override.monsterPower !== undefined) for (const m of Object.values(content.monsters)) { m.hp *= override.monsterPower; m.atk *= override.monsterPower; }
-Object.assign(content.heroGrowth, override.heroGrowth ?? {});   // e.g. {"def":0.15,"sp":0.15}
+Object.assign(content.heroGrowth, override.heroGrowth ?? {});
+if (override.headStart) content.headStart = {hp: 0, sp: 0, ...override.headStart};   // e.g. {"hp":10,"sp":3}   // e.g. {"def":0.15,"sp":0.15}
 for (const [cls, p] of Object.entries(override.classPower ?? {})) { content.classes[cls].atk *= p; if (content.classes[cls].spell) content.classes[cls].spell *= p; }
 // Keep the placement code's view of the content in the engine's realm.
 const contentInCtx = vm.runInContext('(' + JSON.stringify(content) + ')', ctx);
@@ -102,10 +106,12 @@ for (const cls of CLASSES) {
 				for (let k = 0; k < nonces; ++k) {
 					const hero = {cls, level: L, xp: 0, safeShare: 1, xpTable: NEVER, monsters: {first, width}};
 					const game = new DungeonGame(b.maze, b.dungeon, hero, `bal${d}_${k}`);
-					let guard = 0;
+					let guard = 0, wasFight = false;
 					while (!game.outcome && game.actions.length < 6000 && ++guard < 12000) {
 						const r = game.act(botAction(game));
 						if (!r.ok) break;
+						if (HEAL && wasFight && !game.fight && !game.outcome) game.hp = Math.min(game.stats.maxHp, game.hp + game.stats.maxHp * HEAL);
+						wasFight = !!game.fight;
 					}
 					const s = game.summary();
 					++n; if (s.outcome === 'died') ++died;

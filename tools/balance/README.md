@@ -53,3 +53,30 @@ Findings at width 4, monsterGrowth 0.15, traps off (traps alone kill 8-17% of ru
 
 Monsters need to be about 5-16% of their stated HP and ATK for this player to survive. Hero DEF growth
 barely changes that, so the gap is in the monster/hero ratio, not DEF alone.
+
+## Single fights, monster tiers and the head start (`fights.js`, `fit-tiers.js`)
+
+`fights.js [heroLevel]` plays one fight at a time with the engine's own maths and prints the share of
+HP a hero loses to each species, by class and by the monster's level offset from the hero (Easy spans
+about -3..+4 inside a band). Before this change a level 9 Warrior lost 40-50% of its HP to a
+same-level goblin or skeleton and lost to orcs and wraiths. A Mage lost to goblins.
+
+`fit-tiers.js` scales each tier's HP and ATK so a same-level monster costs a Warrior (the baseline
+class) 5% / 10% / 20% / 50% of its HP for tiers 1 / 2 / 3 / boss, averaged over levels 5-19.
+Factors: tier 1 x0.9, tier 2 x0.54, tier 3 x0.45, boss x0.38. These are now in `DUNGEON_CONTENT`.
+
+`headStart` (Mike's idea) gives every hero extra levels of HP and SP growth on top of its own level
+(now 10 HP and 3 SP): about 2.5x base HP at level 1. `HEAL=<share>` in `real.js` stands in for
+the missing potions and Heal skill (that share of max HP back after each fight). Easy deaths, mean of
+all six classes, traps off:
+
+| HP back per fight | Level 1 | Level 5 | Level 12 | with head start: L1 | L5 | L12 |
+|---|---|---|---|---|---|---|
+| 0 | 100% | 100% | 92% | 100% | 96% | 79% |
+| 10% | 100% | 100% | 67% | 58% | 71% | 46% |
+| 20% | 88% | 92% | 58% | 42% | 50% | 33% |
+| 40% | 83% | 75% | 46% | 38% | 42% | 29% |
+
+(4 dungeons x 1 dice seed per cell, so each cell is rough, and Mage never survives: it only has ATK 4
+until its spells exist, which drags every mean up.) Without any healing, a run of 10-15 fights is
+lethal whatever the monsters do, so healing/potions are the missing piece, not more monster tuning.
