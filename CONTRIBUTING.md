@@ -51,6 +51,47 @@ The tests run on every pull request, so you'll see if anything breaks.
 - Add or update a test for any change in behaviour.
 - Update `README.md` when you change how the engine is used.
 
+## Using AI tools
+
+AI tools are welcome here; much of Randomaze itself was written with one. Like any tool, it can
+be used well or poorly, so these are the expectations.
+
+### When to disclose
+
+- **No need to disclose** editor code assist, where you accept or type each line as you go.
+  You are writing the code, and reviewing it line by line as it goes in.
+- **Disclose** when an AI writes blocks of code for you: a whole function, a test file, a
+  refactor, or the plan for a change. The bigger the block, the more you explain.
+
+### What to write down
+
+For any change that needs disclosing, add a short note to the [`ai/`](ai/) folder in the same
+pull request, following [`ai/TEMPLATE.md`](ai/TEMPLATE.md). It covers:
+
+- **What and why:** the problem, and why this is the right fix for it.
+- **What the AI did:** which tool, and which parts it wrote or planned.
+- **What you did:** what you checked, changed or rewrote, and how you tested it.
+- **Anything a reviewer should look at closely.**
+
+A single function needs a few lines; a refactor needs its reasoning laid out. The note stays in
+the repository, so the reasons behind a change travel with the code, not only with the pull request.
+
+### Owning the result
+
+- You must understand every line you submit and be able to explain it in your own words. The
+  maintainer may ask you to walk through any part. "The AI wrote that" is not an answer.
+- AI-written code meets the same bar as any other: tests pass, `test/fingerprint.test.js`
+  passes or the maze change is explained, the README is updated, and the description matches the diff.
+- Answer review comments yourself. Use a tool to help if you like, but the reply should be yours.
+- Bug reports must come from a real problem you saw, with a seed that shows it.
+
+### When a contribution doesn't meet the bar
+
+The maintainer may close a pull request without a line-by-line review when it shows signs that
+nobody reviewed the AI's output: functions, options or files that don't exist, changes unrelated
+to the stated goal, large untested changes, a missing or empty `ai/` note, or answers that
+don't match the code. Closing isn't a judgement of you: fix what's missing and open it again.
+
 ## How your contribution is used
 
 Please read this part before you open a pull request. It is short, and we'd rather be plain
