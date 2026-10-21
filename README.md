@@ -17,6 +17,9 @@ to add 10 plain (keyless) doors.
 Arrow keys walk and turn, Up opens a door you have the key for, and
 Page Up / Page Down climb ladders.
 
+Want to make your own game with it? [BUILD-YOUR-OWN.md](BUILD-YOUR-OWN.md) walks you through it,
+including how to run a local web server.
+
 ## What's here
 
 | Folder | What it is | Needs |
