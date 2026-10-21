@@ -32,15 +32,17 @@ const opposite = vm.runInContext('opposite', ctx);
 Maze.prototype.opposite = opposite;
 
 // Generate a full maze the same way the game does, for a game type and seed.
-function generate(type, seed) {
-	const [params, maze] = vm.runInContext(`build(${type}, ${seed})`, ctx, { timeout: 5000 });
+function generate(type, seed, features = {}) {
+	const [params, maze] = vm.runInContext(`build(${type}, ${seed}, ${JSON.stringify(features)})`, ctx, { timeout: 5000 });
 	return { params, maze };
 }
 
 // Build only the game parameters (no maze) for a game type and seed. Leave seed out for today's maze.
 // JSON round-trips the result into a plain object from this realm, so deepStrictEqual works on it.
-function params(type, seed = null) {
-	return JSON.parse(vm.runInContext(`JSON.stringify(new MazeParameters(${type}, ${seed}))`, ctx));
+// `features` is passed as the third argument only when given, so the default call stays the two-argument one.
+function params(type, seed = null, features) {
+	const args = features === undefined ? '' : `, ${JSON.stringify(features)}`;
+	return JSON.parse(vm.runInContext(`JSON.stringify(new MazeParameters(${type}, ${seed}${args}))`, ctx));
 }
 
 const dailySeed = vm.runInContext('dailySeed', ctx);
