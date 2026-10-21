@@ -122,6 +122,11 @@ git push origin v0.2.0
 Tags with a suffix, like `v0.3.0-beta.1`, are pre-releases. Sites that track the latest
 stable release skip them.
 
+## Contributing
+
+Contributions are welcome, from bug reports to new features. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for how to get set up and how contributions are used.
+
 ## Credits
 
 - **Barcade Brawl** font by zephram, released under CC0 (public domain).
