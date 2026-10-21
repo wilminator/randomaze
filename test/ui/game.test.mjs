@@ -473,3 +473,84 @@ test('animation speed is kept between a quarter and normal pace, and junk means 
 	assert.strictEqual(await factor(undefined), 1);
 	await page.close();
 });
+
+/*
+High contrast mode. The look itself is css, so these tests read computed styles in a real browser:
+walls lose their picture and turn solid, and every key shares one color-and-pattern look with its door.
+*/
+test('high contrast turns walls solid and back again', async () => {
+	const { page, errors } = await openDemo('', gameScript(1, 5, 11));
+	const wall = () => page.evaluate(() => {
+		const style = getComputedStyle(document.querySelector('.tile[class*="wall_"]'));
+		return {image: style.backgroundImage, color: style.backgroundColor};
+	});
+	// gameScript's wall is `background: gray`, so it has no picture; give it one to prove the mode removes it.
+	await page.evaluate(() => {
+		for (const rule of game.mazehtml.styleSheet.cssRules) {
+			if (rule.selectorText && rule.selectorText.startsWith('.wall_')) rule.style.backgroundImage = 'linear-gradient(red, blue)';
+		}
+	});
+	assert.match((await wall()).image, /gradient/, 'the normal look has a picture');
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	assert.strictEqual(await page.evaluate(() => document.documentElement.classList.contains('highContrast')), true);
+	assert.deepStrictEqual(await wall(), {image: 'none', color: 'rgb(0, 0, 0)'}, 'walls are solid black');
+	const floor = await page.evaluate(() => getComputedStyle(document.querySelector('.floor:not(.outside)')).backgroundColor);
+	assert.strictEqual(floor, 'rgb(255, 255, 255)', 'floors are solid white');
+	await page.evaluate(() => game.mazehtml.setHighContrast(false));
+	assert.match((await wall()).image, /gradient/, 'turning it off brings the picture back');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('high contrast gives each lock its own color and pattern, shared by door and key', async () => {
+	const { page, errors } = await openDemo('', gameScript(3, 3, 19));
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	const looks = await page.evaluate(() => {
+		const look = style => `${style.backgroundColor}|${style.backgroundImage}`;
+		const out = [];
+		for (const keyNumber of Object.keys(game.mazehtml.keyList).map(Number).filter(k => k > 1)) {
+			const door = document.querySelector(`.door_${keyNumber}`);
+			const key = document.querySelector(`.key_${keyNumber}`);
+			// A lock the maze never drew a door or key for has nothing to compare.
+			if (!door || !key) continue;
+			out.push({keyNumber, door: look(getComputedStyle(door)), disc: look(getComputedStyle(key, '::after'))});
+		}
+		return out;
+	});
+	assert.ok(looks.length > 8, `the maze has many locks (${looks.length})`);
+	for (const look of looks) {
+		assert.strictEqual(look.door, look.disc, `lock ${look.keyNumber}: door and key disc match`);
+		assert.notStrictEqual(look.door.split('|')[0], 'rgba(0, 0, 0, 0)', 'the door has a color');
+	}
+	// Color or pattern tells locks apart: no two locks share both.
+	assert.strictEqual(new Set(looks.map(l => l.door)).size, looks.length, 'every lock looks different');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('high contrast key letters show on the key and a keyless door stays plain', async () => {
+	const { page } = await openDemo('', gameScript(3, 3, 19, 4));
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	const info = await page.evaluate(() => {
+		const key = document.querySelector('.item.key');
+		const plain = document.querySelector('.door_1');
+		return {letters: getComputedStyle(key, '::after').content, label: key.dataset.initials, plain: plain && getComputedStyle(plain).backgroundImage};
+	});
+	assert.strictEqual(info.letters, `"${info.label}"`, 'the key shows its letters');
+	assert.strictEqual(info.plain, 'none', 'a plain door has no pattern');
+	await page.close();
+});
+
+test('high contrast redraws the map in black and white', async () => {
+	const { page } = await openDemo('', gameScript(1, 5, 11));
+	const cell = () => page.evaluate(() => {
+		const visited = game.maze.cellList.find(c => c.play.visited);
+		return getComputedStyle(visited.map[0]).backgroundColor;
+	});
+	assert.strictEqual(await cell(), 'rgb(255, 255, 255)');
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	assert.strictEqual(await cell(), 'rgb(0, 0, 0)');
+	await page.evaluate(() => game.mazehtml.setHighContrast(false));
+	assert.strictEqual(await cell(), 'rgb(255, 255, 255)');
+	await page.close();
+});
