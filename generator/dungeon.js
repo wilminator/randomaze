@@ -86,6 +86,13 @@ const DUNGEON_CONTENT = {
 	// both kinds, at most `carry` (design 7.3a).
 	potions: { cellsPerPotion: 40, heal: 0.5, shopHeal: 0.25, cellsPerSpPotion: 40, sp: 0.5, shopSp: 0.25, carry: 8 },
 
+	// Passive charms, carried in the same bag and used up when they trigger (Mike, 2026-10-21):
+	//   feather  a fall (a drop, or an unseen pit) does no damage
+	//   hold     an unseen pit does not drop you: you stand on it and it is revealed
+	// One of each per `cellsPerCharm` cells on the floor; the shop's arrive in `hero.potions` as the
+	// strings 'feather' and 'hold'.
+	charms: { feather: { name: 'Feather Charm', cellsPerCharm: 190 }, hold: { name: 'Anchor Charm', cellsPerCharm: 190 } },
+
 	// The level 1 skill of each class, used with key 1 (design 7.2). `sp` is the cost.
 	//   power-strike  a hit worth `mult` x damage            backstab   `mult` x, on a first strike only
 	//   firebolt      spell damage that ignores DEF; out of a fight, burns a monster in the next cell
@@ -213,9 +220,11 @@ class Dungeon {
 		this.monsters = [];
 		this.traps = [];
 		this.potions = [];
+		this.charms = [];
 		this.placeMonsters();
 		this.placeTraps();
 		this.placePotions();
+		this.placeCharms();
 	}
 
 	// Steps from the start to each cell, going through every wall the rules let a player through
@@ -352,6 +361,20 @@ class Dungeon {
 		}
 	}
 
+	// Charms on the floor: like potions, but never on a hole or pit, with a stream of their own.
+	placeCharms() {
+		const content = this.content, maze = this.maze;
+		const rng = new Math.seedrandom(`${this.seed}:charms`);
+		const taken = new Set(this.potions.map(x => x.cell));
+		const spots = maze.cellList.filter(c => this.dist.has(c) && this.dist.get(c) > content.minStartDistance && !this.entranceSet.has(c) && !c.data.hole && !taken.has(c));
+		for (const [kind, spec] of Object.entries(content.charms)) {
+			const count = Math.round(maze.cellList.length / spec.cellsPerCharm);
+			for (let i = 0; i < count && spots.length; ++i) {
+				this.charms.push({ cell: spots.splice(Math.floor(rng() * spots.length), 1)[0], charm: kind });
+			}
+		}
+	}
+
 	// A monster's level for a band whose monsters start at level `first` and span `width` levels.
 	monsterLevel(monster, first, width) {
 		return Math.max(1, first + Math.round(monster.depth * width) + monster.jitter);
@@ -386,9 +409,9 @@ class DungeonGame {
 			throw new Error('the hero needs xpTable and monsters {first, width}');
 		}
 		const carried = hero.potions ?? [];
-		const share = x => (typeof x == 'number' ? x : x?.sp) > 0 && (typeof x == 'number' ? x : x?.sp) <= 1;
+		const share = x => typeof x == 'string' ? x in content.charms : (typeof x == 'number' ? x : x?.sp) > 0 && (typeof x == 'number' ? x : x?.sp) <= 1;
 		if (!Array.isArray(carried) || carried.length > content.potions.carry || !carried.every(share)) {
-			throw new Error('hero potions must be a short list of shares (0 to 1], a number for HP or {sp: share} for SP');
+			throw new Error('hero potions must be a short list of shares (0 to 1], a number for HP or {sp: share} for SP, or a charm name');
 		}
 		this.maze = maze;
 		this.dungeon = dungeon;
@@ -421,8 +444,10 @@ class DungeonGame {
 		this.maxDist = 0;            // furthest from the start the hero got, in steps
 		this.usedTraps = new Set();  // darts and alarms go off once
 		this.seenTraps = new Set();  // traps the hero has set off
-		this.bag = carried.map(x => typeof x == 'number' ? { heal: x, found: false } : { sp: x.sp, found: false });   // potions carried, oldest first
+		this.bag = carried.map(x => typeof x == 'string' ? { charm: x, found: false } : typeof x == 'number' ? { heal: x, found: false } : { sp: x.sp, found: false });   // potions carried, oldest first
 		this.potionAt = new Map(dungeon.potions.map(x => [x.cell, x]));
+		this.charmAt = new Map(dungeon.charms.map(x => [x.cell, x]));
+		this.player.fallGuard = (cell, via) => via == 'step' && this.useCharm('hold');
 		this.counts = { fights: 0, attacks: 0, hits: 0, fleeTries: 0, fleeWins: 0, damageTaken: 0, damageDealt: 0, skills: 0, potionsFound: 0, potionsDrunk: 0 };
 
 		// Scent: the last 8 cells the hero stood in, newest with the highest number.
@@ -503,7 +528,7 @@ class DungeonGame {
 			// Dropped a floor: it hurts, and there is no stepping back up (so no fleeing that way).
 			this.prev = null;
 			this.emit({ type: 'fall', via: result.via });
-			this.hurtHero(fallDamage(this.stats.maxHp));
+			if (!this.useCharm('feather')) this.hurtHero(fallDamage(this.stats.maxHp));
 			if (this.outcome) return;
 		}
 		this.enterCell(cell);
@@ -514,6 +539,12 @@ class DungeonGame {
 		const trap = this.trapAt.get(cell);
 		if (trap) this.springOnHero(trap);
 		if (this.outcome) return;
+		const charm = this.charmAt.get(cell);
+		if (charm && this.bag.length < this.content.potions.carry) {
+			this.charmAt.delete(cell);
+			this.bag.push({ charm: charm.charm, found: true });
+			this.emit({ type: 'charm-found', charm: charm.charm, cell: cell.loc });
+		}
 		const potion = this.potionAt.get(cell);
 		if (potion && this.bag.length < this.content.potions.carry) {
 			this.potionAt.delete(cell);
@@ -886,11 +917,20 @@ class DungeonGame {
 
 	// The oldest potion that would do some good: an HP potion when hurt, an SP potion when SP is down.
 	pickPotion() {
-		return this.bag.findIndex(x => x.sp ? this.sp < this.stats.maxSp : this.hp < this.stats.maxHp);
+		return this.bag.findIndex(x => x.charm ? false : x.sp ? this.sp < this.stats.maxSp : this.hp < this.stats.maxHp);
+	}
+
+	// Uses up a charm if the bag has one of that kind. Returns whether it did.
+	useCharm(kind) {
+		const i = this.bag.findIndex(x => x.charm == kind);
+		if (i < 0) return false;
+		this.bag.splice(i, 1);
+		this.emit({ type: 'charm', charm: kind });
+		return true;
 	}
 
 	potionRefusal() {
-		if (this.bag.length == 0) return 'no potion to drink';
+		if (!this.bag.some(x => !x.charm)) return 'no potion to drink';
 		if (this.pickPotion() < 0) return 'no potion would help';
 		return null;
 	}
@@ -1063,7 +1103,8 @@ class DungeonGame {
 			endLevel: dungeonLevelForXp(this.hero.xpTable, this.hero.xp + grantedXp, this.content.maxLevel),
 			hp: this.hp,
 			sp: this.sp,
-			potionsLeft: { found: this.bag.filter(x => x.found).length, carried: this.bag.filter(x => !x.found).length },
+			potionsLeft: { found: this.bag.filter(x => x.found && !x.charm).length, carried: this.bag.filter(x => !x.found && !x.charm).length },
+			charmsLeft: this.bag.filter(x => x.charm).length,
 			stats: { ...this.counts, rolls: this.dice.rolls },
 		};
 	}

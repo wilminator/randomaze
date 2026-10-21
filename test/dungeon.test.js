@@ -52,6 +52,7 @@ function setup({ maze = corridor(12), monsters = [], traps = [], potions = [], h
 	const dungeon = new Dungeon(maze, 7, content);
 	dungeon.monsters = monsters.map((m, id) => ({ id, species: m.species, cell: maze.cell(0, m.col), depth: 0, jitter: (m.level ?? 1) - 1 }));
 	dungeon.traps = traps.map(t => ({ kind: t.kind, cell: maze.cell(0, t.col) }));
+	dungeon.charms = [];
 	dungeon.potions = potions.map(x => ({ cell: maze.cell(0, x.col), ...(x.sp ? { sp: x.sp } : { heal: x.heal ?? DUNGEON_CONTENT.potions.heal }) }));
 	const game = new DungeonGame(maze, dungeon, hero(heroOver), 'test', { events: true });
 	game.dice = scriptedDice();
@@ -765,4 +766,78 @@ test('a Mage can drink SP potions mid-fight to keep casting Firebolt', () => {
 	game.dice.queue.push(0.5);
 	run(game, '1');
 	assert.strictEqual(game.monsters[0].hp, 28 - 9);
+});
+
+
+// ---------------------------------------------------------------- charms
+
+test('Feather Charm: a fall does no damage and the charm is used up', () => {
+	for (const letters of ['FD', 'F']) {          // a chosen drop at a seen hole, and an unseen pit
+		const game = setup({ maze: holeMaze(letters == 'F'), content: blind(), heroOver: { potions: ['feather'] } });
+		run(game, letters);
+		assert.strictEqual(game.player.z, 0, 'the hero still fell');
+		assert.strictEqual(game.hp, 30, 'unhurt');
+		assert.strictEqual(game.bag.length, 0, 'the charm is gone');
+		assert.ok(game.events.some(e => e.type == 'charm' && e.charm == 'feather') || letters == 'FD');
+	}
+	const bare = setup({ maze: holeMaze(false), content: blind() });
+	run(bare, 'FD');
+	assert.strictEqual(bare.hp, 27, 'without the charm a fall still costs 10%');
+});
+
+test('Anchor Charm: an unseen pit does not drop you, is revealed, and the charm is used up', () => {
+	const game = setup({ maze: holeMaze(true), content: blind(), heroOver: { potions: ['hold'] } });
+	run(game, 'F');
+	assert.strictEqual(game.player.z, 1, 'still on the top floor');
+	assert.strictEqual(game.hp, 30);
+	assert.strictEqual(game.bag.length, 0);
+	assert.ok(game.events.some(e => e.type == 'charm' && e.charm == 'hold'));
+	run(game, 'F');                                // walks on across the revealed hole
+	assert.strictEqual(game.player.z, 1);
+	assert.strictEqual(game.player.revealedPits.has(`${game.maze.cell(0, 1).loc}`), true);
+});
+
+test('Anchor Charm does not stop a drop the hero chose, and Feather then takes the damage', () => {
+	const game = setup({ maze: holeMaze(false), content: blind(), heroOver: { potions: ['hold', 'feather'] } });
+	run(game, 'FD');
+	assert.strictEqual(game.player.z, 0, 'D is a choice, not an accident');
+	assert.strictEqual(game.hp, 30, 'the Feather Charm covered the fall');
+	assert.deepStrictEqual(game.bag.map(x => x.charm), ['hold'], 'the Anchor Charm is kept');
+});
+
+test('both charms on a pit: the Anchor Charm saves the fall and the Feather Charm waits', () => {
+	const game = setup({ maze: holeMaze(true), content: blind(), heroOver: { potions: ['feather', 'hold'] } });
+	run(game, 'F');
+	assert.strictEqual(game.player.z, 1);
+	assert.deepStrictEqual(game.bag.map(x => x.charm), ['feather']);
+});
+
+test('charms lie on the floor, take a bag slot, and are not drunk by I', () => {
+	const maze = corridor(12);
+	const game = setup({ maze, content: pinned() });
+	game.charmAt.set(maze.cell(0, 1), { cell: maze.cell(0, 1), charm: 'hold' });
+	run(game, 'F');
+	assert.strictEqual(game.bag.length, 1);
+	assert.ok(game.events.some(e => e.type == 'charm-found'));
+	game.hp = 10;
+	assert.strictEqual(game.act('I').reason, 'no potion to drink', 'a charm is not a potion');
+	assert.strictEqual(game.summary().charmsLeft, 1);
+	const full = setup({ maze, content: pinned(), heroOver: { potions: Array(8).fill('feather') } });
+	full.charmAt.set(maze.cell(0, 1), { cell: maze.cell(0, 1), charm: 'hold' });
+	run(full, 'F');
+	assert.strictEqual(full.bag.length, 8, 'no room');
+	assert.throws(() => setup({ heroOver: { potions: ['wings'] } }), /charm name/);
+});
+
+test('charms are placed away from holes, the start and each other', () => {
+	for (let day = 1; day <= 20; ++day) {
+		const { maze, dungeon } = buildDungeon(202601000 + day);
+		const cells = new Set(dungeon.potions.map(x => x.cell));
+		for (const c of dungeon.charms) {
+			assert.ok(!c.cell.data.hole && !cells.has(c.cell) && !dungeon.entranceSet.has(c.cell) && dungeon.dist.get(c.cell) > 3);
+			cells.add(c.cell);
+		}
+		const expected = Object.values(DUNGEON_CONTENT.charms).reduce((n, spec) => n + Math.round(maze.cellList.length / spec.cellsPerCharm), 0);
+		assert.strictEqual(dungeon.charms.length, expected);
+	}
 });

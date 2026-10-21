@@ -161,3 +161,11 @@ The stand-in cannot show their value: it only walks the exit route, fights about
 needs about 10 casts, which its own tank covers (it drank 0.1 of them a run). What it does show is the
 slot cost: starting with a full bag of 8 SP potions leaves no room for HP potions and doubles Easy
 deaths (28% to 56% at level 1), so the shared bag matters.
+
+## Charms (Mike, 2026-10-21)
+
+Two passive bag items, used up when they trigger: the Feather Charm (a fall does no damage) and the
+Anchor Charm (an unseen pit does not drop you; it is revealed). About 2 of each per maze, one bag
+slot each, shop copies come in `hero.potions` as `'feather'` / `'hold'`. A fall costs only 10% of max
+HP, so the Anchor Charm is the one that matters: a fall is one-way and can land the hero among monsters
+on another floor. The stand-in does not use them (it never meets a pit on purpose).
