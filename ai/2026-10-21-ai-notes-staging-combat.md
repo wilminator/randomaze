@@ -1,6 +1,6 @@
 # AI notes for the staging-combat engine PRs
 
-- **Pull request:** this one (into `staging-combat`)
+- **Pull request:** #28 (into `staging-combat`)
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code
 
