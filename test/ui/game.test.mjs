@@ -473,3 +473,43 @@ test('animation speed is kept between a quarter and normal pace, and junk means 
 	assert.strictEqual(await factor(undefined), 1);
 	await page.close();
 });
+
+/*
+A touch button is drawn only when pressing it would do something. Left and right always
+work. A hidden button still catches taps (it only stops being drawn), so a tap on a wall
+bumps as before.
+*/
+test('touch buttons for moves that would only bump are hidden, and come back when the move works', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4), { hasTouch: true, viewport: iPadSizes.portrait });
+	const drawn = id => page.evaluate(id => getComputedStyle(document.getElementById(id)).opacity == '1', id);
+	const shown = async () => ({
+		fwd: await drawn('touchFwd'), back: await drawn('touchBack'), left: await drawn('touchLeft'),
+		right: await drawn('touchRight'), up: await drawn('touchUp'), down: await drawn('touchDown'),
+	});
+	// What the rules say, for comparison: the buttons must match canAct for every move.
+	const rules = () => page.evaluate(() => {
+		const p = game.mazehtml.player;
+		return { fwd: p.canAct('F'), back: p.canAct('B'), left: true, right: true, up: p.canAct('U'), down: p.canAct('D') };
+	});
+	const idle = () => page.waitForFunction(() => !game.mazehtml.isBusy());
+	await idle();
+	let state = await shown();
+	assert.deepStrictEqual(state, await rules(), 'at the start');
+	assert.ok(state.fwd && state.left && state.right, 'forward and the turns show');
+	assert.ok(!state.back, 'the way in is shut, so Back is hidden');
+	// Turn until Forward would bump a wall (this maze's start cell has walls east and west), then the Forward box must go.
+	let turns = 0;
+	while (await page.evaluate(() => game.mazehtml.player.canAct('F')) && turns++ < 8) {
+		// One quick tap on the Left box turns exactly once (a held key could turn twice).
+		await page.locator('#touchLeft').dispatchEvent('touchstart');
+		await page.locator('#touchLeft').dispatchEvent('touchend');
+		await page.waitForFunction(n => game.mazehtml.player.moves >= n, turns);
+		await idle();
+		assert.deepStrictEqual(await shown(), await rules(), `after ${turns} turn(s)`);
+	}
+	assert.ok(turns > 0 && turns <= 8, 'found a wall to face');
+	assert.ok(!(await shown()).fwd, 'Forward is hidden facing a wall');
+	assert.ok((await shown()).left, 'Left is still shown');
+	assert.ok(await page.locator('#touchFwd').isVisible(), 'the hidden box is still there to catch taps');
+	await page.close();
+});

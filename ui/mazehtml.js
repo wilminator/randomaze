@@ -882,6 +882,17 @@ PgDn Descend<br />
 			}
 		}
 
+		// A touch button is shown exactly when pressing it would do something, so the
+		// buttons that would only bump a wall or a locked door are hidden. The rules
+		// answer through player.canAct(). Left and right always work, so they never hide.
+		// A hidden button is still there to catch taps; it only stops being drawn.
+		const touchButtonActions = { touchFwd: 'F', touchBack: 'B', touchUp: 'U', touchDown: 'D' };
+		function updateTouchButtons() {
+			for (const [id, action] of Object.entries(touchButtonActions)) {
+				$(`#${id}`).toggleClass('touchBlocked', !player.canAct(action));
+			}
+		}
+
 		function processKeyPress(key) {
 			const action = keyActions[key];
 			if (!action) {
@@ -1058,6 +1069,9 @@ PgDn Descend<br />
 				mazehtmlui.renderMapCursor(lastCell); 
 			}
 			
+			// The state may have changed (a key, a door, a wall that fell), so redo the buttons.
+			updateTouchButtons();
+
 			// If there are no more animations, then process activity at this cell.
 			if (!animationState && nextCell) {
 				// Check for items
@@ -1095,6 +1109,7 @@ PgDn Descend<br />
 
 		// Initialize our starting cell.
 		maze.grid[pZ][pY][pX].play.visited = true;
+		updateTouchButtons();
 
 		// Attach the current floor elements to the UI.
 		if (this.mapList) {
