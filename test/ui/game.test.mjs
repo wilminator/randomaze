@@ -414,6 +414,33 @@ test('walls and floors vary within a maze, and look the same when it is reloaded
 	assert.deepStrictEqual(await looks(second.page), a);
 });
 
+test('walls and floors come in loaded pairs, and a cell never mixes them up', async () => {
+	// Three floor images, but only these pairs are allowed (the second wall goes with two floors).
+	const pairs = [['w1', 'f0'], ['w2', 'f1'], ['w2', 'f2']];
+	const script = lookScript(1, 11, 3).replace('mazehtml.generateGameUi', `
+		for (const [wall, floor] of ${JSON.stringify(pairs)}) mazehtml.loadLook({wall, floor});
+		mazehtml.generateGameUi`);
+	const { page, errors } = await openDemo('', script);
+	assert.deepStrictEqual(errors, []);
+	// For each cell, its floor tile and its wall tiles must come from one of the pairs.
+	const seen = await page.evaluate(() => {
+		const found = new Set();
+		const {maze, mazehtml} = game;
+		for (let f = 0; f < maze.floors; ++f) for (let r = 0; r < maze.rows; ++r) for (let c = 0; c < maze.columns; ++c) {
+			found.add(mazehtml.wallTile(f, r, c) + ' ' + mazehtml.floorTile(f, r, c));
+		}
+		return [...found];
+	});
+	const allowed = pairs.map(([w, f]) => `wall_${w} floor_${f}`);
+	assert.ok(seen.length > 1, 'more than one pair is used');
+	for (const look of seen) assert.ok(allowed.includes(look), look);
+	// And the cells the page drew carry the pair classes.
+	const drawn = await looks(page);
+	assert.ok(drawn.walls.includes('wall_w'));
+	assert.ok(drawn.floors.includes('floor_f'));
+	await page.close();
+});
+
 test('with no floor or ceiling images they keep their plain colour', async () => {
 	const { page, errors } = await openDemo('', lookScript(1, 11, 0));
 	assert.deepStrictEqual(errors, []);
@@ -559,5 +586,45 @@ test('high contrast redraws the map in black and white', async () => {
 	assert.strictEqual(await cell(), 'rgb(0, 0, 0)');
 	await page.evaluate(() => game.mazehtml.setHighContrast(false));
 	assert.strictEqual(await cell(), 'rgb(255, 255, 255)');
+	await page.close();
+});
+
+/*
+A touch button is drawn only when pressing it would do something. Left and right always
+work. A hidden button still catches taps (it only stops being drawn), so a tap on a wall
+bumps as before.
+*/
+test('touch buttons for moves that would only bump are hidden, and come back when the move works', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4), { hasTouch: true, viewport: iPadSizes.portrait });
+	const drawn = id => page.evaluate(id => getComputedStyle(document.getElementById(id)).opacity == '1', id);
+	const shown = async () => ({
+		fwd: await drawn('touchFwd'), back: await drawn('touchBack'), left: await drawn('touchLeft'),
+		right: await drawn('touchRight'), up: await drawn('touchUp'), down: await drawn('touchDown'),
+	});
+	// What the rules say, for comparison: the buttons must match canAct for every move.
+	const rules = () => page.evaluate(() => {
+		const p = game.mazehtml.player;
+		return { fwd: p.canAct('F'), back: p.canAct('B'), left: true, right: true, up: p.canAct('U'), down: p.canAct('D') };
+	});
+	const idle = () => page.waitForFunction(() => !game.mazehtml.isBusy());
+	await idle();
+	let state = await shown();
+	assert.deepStrictEqual(state, await rules(), 'at the start');
+	assert.ok(state.fwd && state.left && state.right, 'forward and the turns show');
+	assert.ok(!state.back, 'the way in is shut, so Back is hidden');
+	// Turn until Forward would bump a wall (this maze's start cell has walls east and west), then the Forward box must go.
+	let turns = 0;
+	while (await page.evaluate(() => game.mazehtml.player.canAct('F')) && turns++ < 8) {
+		// One quick tap on the Left box turns exactly once (a held key could turn twice).
+		await page.locator('#touchLeft').dispatchEvent('touchstart');
+		await page.locator('#touchLeft').dispatchEvent('touchend');
+		await page.waitForFunction(n => game.mazehtml.player.moves >= n, turns);
+		await idle();
+		assert.deepStrictEqual(await shown(), await rules(), `after ${turns} turn(s)`);
+	}
+	assert.ok(turns > 0 && turns <= 8, 'found a wall to face');
+	assert.ok(!(await shown()).fwd, 'Forward is hidden facing a wall');
+	assert.ok((await shown()).left, 'Left is still shown');
+	assert.ok(await page.locator('#touchFwd').isVisible(), 'the hidden box is still there to catch taps');
 	await page.close();
 });

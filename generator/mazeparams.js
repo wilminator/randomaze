@@ -12,8 +12,15 @@ function dailySeed(date = new Date()) {
 	return date.getFullYear() * 100000 + (date.getMonth() + 1) * 100 + date.getDate();
 }
 
+/*
+Optional extras a maze can switch on, all off by default.
+`features` is an object of booleans; keys it doesn't know are ignored, and leaving it out
+(or passing {}) gives exactly the maze every earlier version gave for that type and seed.
+  plainDoors: true  also scatter keyless doors through the maze (see Maze.generatePlainDoors).
+The server decides which features a day's maze gets; the browser never does.
+*/
 class MazeParameters{
-	constructor(type, seed = null){
+	constructor(type, seed = null, features = {}){
 		if (!seed){
 			seed = dailySeed();
 		}
@@ -51,5 +58,29 @@ class MazeParameters{
 		this.doorTypes = generateBinom(doorTries, doorSuccess, doorBase);// 14;
 		this.entrances = generateBinom(entTries, entSuccess, entBase) // 3;
 		this.oneWayWalls = generateBinom(oneTries, oneSuccess);
+
+		// Feature counts. Their numbers come from a second generator, never from `generator`
+		// above, so switching a feature on or off cannot shift any number drawn before it.
+		// 0 means none. Same field name staging-combat uses for the dungeon.
+		this.plainDoors = 0;
+		if (features && features.plainDoors === true) {
+			const featureBinom = generateBinomialDistributedIntegerWrapper(new Math.seedrandom(`${seed}:features`));
+			this.plainDoors = featureBinom(12, 0.5, 8);
+		}
 	}
+}
+
+/*
+Builds the whole maze for some parameters: the one place that knows the steps and their order.
+The site, the server's replay and the demo all call this, so a feature applies everywhere at once.
+*/
+function buildMaze(params) {
+	const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
+		params.doorTypes, params.entrances, params.oneWayWalls);
+	maze.generateMaze();
+	maze.generateDoors();
+	if (params.plainDoors > 0) {
+		maze.generatePlainDoors(params.plainDoors);
+	}
+	return maze;
 }

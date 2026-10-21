@@ -23,12 +23,9 @@ for (const f of ['mazeutil.js', 'mazegen.js', 'mazeparams.js', 'mazeplayer.js'].
 	vm.runInContext(fs.readFileSync(path.join(rootDir, f), 'utf8'), ctx, { filename: f });
 }
 vm.runInContext(`
-function build(type, seed) {
-	const p = new MazeParameters(type, seed);
-	const m = new Maze(p.mazeSeed, p.floors, p.columns, p.rows, p.doorTypes, p.entrances, p.oneWayWalls);
-	m.generateMaze();
-	m.generateDoors();
-	return [p, m];
+function build(type, seed, features = {}) {
+	const p = new MazeParameters(type, seed, features);
+	return [p, buildMaze(p)];
 }`, ctx);
 return ctx;
 }

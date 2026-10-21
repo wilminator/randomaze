@@ -82,6 +82,8 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
 #touchRight { width: 20%; left: 75%; top: 20%; height: 60%; writing-mode:vertical-lr;}
 #touchUp { width: 50%; left: 25%; top: 0%; height: 25%;}
 #touchDown { width: 50%; left: 25%; top: 65%; height: 20%;}
+/* A button whose move would do nothing is not drawn, but still catches the tap. */
+.touchNav.touchBlocked { opacity: 0;}
 #touchHide { width: 20%; left: 0%; top: 0%; height: 15%; font-size: 3vmin}
 #touchShow { width: 20%; left: 0%; top: 0%; height: 15%; font-size: 3vmin; opacity:20%; display: none; z-index: 1;}
 #maze.touchOn #touchShow { display: flex;}
