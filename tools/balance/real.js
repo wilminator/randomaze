@@ -6,7 +6,7 @@
 // and reports deaths, XP per run, fights and ticks. The real dungeon has no skills or potions yet,
 // so this measures the core loop: stats, the combat maths, monster placement and their chasing.
 //
-// Content overrides (to try tuned monsters without editing dungeon.js):
+// Content overrides (also "classes":{"mage":{"hp":40}} to change a class's base stats) (to try tuned monsters without editing dungeon.js):
 //   CONTENT='{"monsterGrowth":0.15,"monsterPower":0.3}' node real.js
 // heroGrowth merges into the table's heroGrowth, e.g. CONTENT='{"heroGrowth":{"def":0.15}}'.
 // monsterPower scales every monster's HP and ATK (both, each by this factor). classPower scales a
@@ -40,7 +40,9 @@ if (override.trapDamage) Object.assign(content.trapDamage, override.trapDamage);
 for (const k of ['monsterGrowth', 'monsterXpGrowth', 'cellsPerMonster']) if (override[k] !== undefined) content[k] = override[k];
 if (override.monsterPower !== undefined) for (const m of Object.values(content.monsters)) { m.hp *= override.monsterPower; m.atk *= override.monsterPower; }
 Object.assign(content.heroGrowth, override.heroGrowth ?? {});
+if (override.potions) Object.assign(content.potions, override.potions);   // e.g. {"cellsPerSpPotion":100000} for none
 if (override.headStart) content.headStart = {hp: 0, sp: 0, ...override.headStart};   // e.g. {"hp":10,"sp":3}   // e.g. {"def":0.15,"sp":0.15}
+for (const [cls, o] of Object.entries(override.classes ?? {})) Object.assign(content.classes[cls], o);   // e.g. {"mage":{"sp":99}}
 for (const [cls, p] of Object.entries(override.classPower ?? {})) { content.classes[cls].atk *= p; if (content.classes[cls].spell) content.classes[cls].spell *= p; }
 // Keep the placement code's view of the content in the engine's realm.
 const contentInCtx = vm.runInContext('(' + JSON.stringify(content) + ')', ctx);
@@ -72,8 +74,24 @@ function nextStep(game) {
 	}
 	return null;
 }
+// SKILLS=0 and POTIONS=0 switch the stand-in's use of skills (key 1) and potions (I) off.
+const USE_SKILLS = process.env.SKILLS !== '0', USE_POTIONS = process.env.POTIONS !== '0';
 function botAction(game) {
-	if (game.fight) return game.hp < game.stats.maxHp * 0.3 ? 'X' : 'A';
+	const maxHp = game.stats.maxHp, k = game.content.skills[game.hero.cls], hpShare = game.hp / maxHp;
+	const canCast = USE_SKILLS && game.sp >= k.sp;
+	if (USE_POTIONS && USE_SKILLS && !canCast && game.bag.some(x => x.sp) && (game.fight || game.sp < game.stats.maxSp * 0.5)) return 'I';
+	if (game.fight) {
+		if (USE_POTIONS && hpShare < 0.4 && game.bag.some(x => !x.sp)) return 'I';
+		if (canCast && k.kind == 'heal' && hpShare < 0.5) return '1';
+		if (hpShare < 0.3) return 'X';
+		if (canCast && k.kind == 'backstab') return game.fight.round == 0 && game.fight.firstStrike ? '1' : 'A';
+		if (canCast && k.kind != 'heal') return '1';
+		return 'A';
+	}
+	if (USE_POTIONS && hpShare < 0.5 && game.bag.some(x => !x.sp)) return 'I';
+	if (canCast && k.kind == 'heal' && hpShare < 0.6) return '1';
+	if (canCast && k.kind == 'aimed-shot' && game.shotTarget(k.range)) return '1';
+	if (canCast && k.kind == 'firebolt' && process.env.FIRE1 === '1' && game.shotTarget(1)) return '1';
 	const dir = nextStep(game), p = game.player;
 	if (dir == 'U' || dir == 'D') return dir;
 	if (dir === p.dir) return 'F';
@@ -82,7 +100,7 @@ function botAction(game) {
 
 const bandOf = (level, w) => Math.floor((level - 1) / w);
 const NEVER = Array.from({length: 21}, (_, i) => i === 0 ? 0 : 1e12);   // no mid-run level-ups
-const CLASSES = Object.keys(content.classes);
+const CLASSES = process.env.CLASSES_ONLY ? process.env.CLASSES_ONLY.split(',') : Object.keys(content.classes);
 
 const built = [];
 for (let d = 1; d <= days; ++d) {
@@ -99,12 +117,12 @@ for (const cls of CLASSES) {
 	for (const L of LEVELS) {
 		result.cells[cls][L] = [];
 		for (const diff of DIFFS) {
-			let n = 0, died = 0, xp = 0, kills = 0, fights = 0, ticks = 0, monsters = 0, potentialXp = 0, floorDeaths = 0;
+			let n = 0, died = 0, xp = 0, kills = 0, fights = 0, ticks = 0, monsters = 0, potentialXp = 0, found = 0, drunk = 0, skills = 0, progress = 0;
 			for (let d = 0; d < days; ++d) {
 				const b = built[d];
 				const first = 1 + (bandOf(L, width) + diff) * width;
 				for (let k = 0; k < nonces; ++k) {
-					const hero = {cls, level: L, xp: 0, safeShare: 1, xpTable: NEVER, monsters: {first, width}};
+					const hero = {cls, level: L, xp: 0, safeShare: 1, xpTable: NEVER, monsters: {first, width}, ...JSON.parse(process.env.HERO ?? '{}')};
 					const game = new DungeonGame(b.maze, b.dungeon, hero, `bal${d}_${k}`);
 					let guard = 0, wasFight = false;
 					while (!game.outcome && game.actions.length < 6000 && ++guard < 12000) {
@@ -114,13 +132,14 @@ for (const cls of CLASSES) {
 						wasFight = !!game.fight;
 					}
 					const s = game.summary();
+					found += game.counts.potionsFound; drunk += game.counts.potionsDrunk; skills += game.counts.skills; progress += s.progress;
 					++n; if (s.outcome === 'died') ++died;
 					xp += s.xp; kills += s.kills; fights += s.stats?.fights ?? 0; ticks += s.ticks;
 					monsters += game.monsters.length;
 					potentialXp += game.monsters.reduce((a, m) => a + m.xp, 0);
 				}
 			}
-			result.cells[cls][L].push({diff, n, death: died / n, xp: xp / n, kills: kills / n, fights: fights / n, ticks: ticks / n, monsters: monsters / n, potentialXp: potentialXp / n});
+			result.cells[cls][L].push({diff, n, death: died / n, xp: xp / n, kills: kills / n, fights: fights / n, ticks: ticks / n, monsters: monsters / n, potentialXp: potentialXp / n, potionsFound: found / n, potionsDrunk: drunk / n, skills: skills / n, progress: progress / n});
 		}
 	}
 	if (!QUIET) console.log(`${cls} done (${((Date.now() - t0) / 1000).toFixed(0)} s)`);

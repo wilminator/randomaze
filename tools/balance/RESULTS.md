@@ -132,7 +132,7 @@ Class power factors (a multiplier on every point of damage that class deals, cho
 | Monk | 0.10 | 16% | 0.2 | 60 | ×1.02 |
 
 - **Warrior (lowest factor):** with HP 30, DEF 5 and Power Strike it is the strongest class as designed. Cutting its damage would not fix how it *feels*; trimming HP or DEF would. A DEF of 5 against level 1 monsters' ATK 3 to 5 makes most early hits do 1 to 3 damage.
-- **Mage (highest factor):** the weakest as designed. 16 HP means one tier 3 hit takes most of it, and SP runs out (1 SP per 8 steps, Firebolt costs 3).
+- **Mage (highest factor):** the weakest as designed. 16 HP means one tier 3 hit takes most of it, and SP runs out (1 SP per 8 steps, Firebolt costs 3; both since changed, see the README).
 - **Monk (factor at the 0.10 floor, so unreliable):** in this model Flurry's three to five hits each get the 1-damage minimum, which makes it strong against the weakened monsters, while against high DEF its 0.5× hits lose most of their damage (damage = ATK × mult − DEF/2). It is a sign the minimum-damage rule and Flurry interact strongly; check with real fights, and consider Flurry ignoring DEF or hitting at 0.7×.
 - **Rogue:** skipping 25% of fights is Shadow Step's identity, but it costs about a quarter of the XP, so Rogues level 36 days later. Either a stealth XP bonus (about ×0.67) or Shadow Step should still pay partial XP.
 

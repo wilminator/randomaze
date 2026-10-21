@@ -20,8 +20,9 @@ Randomness comes from two separate streams, so nothing here can move a wall of t
 Actions (a run's record is one letter per action; see replayDungeon):
 	Exploring   F B L R U D as in the classic game, W wait, C close the open door ahead
 	In a fight  A attack, G guard, X flee
-	Reserved    1-4 (skills) and I (items) are valid letters for later phases. For now they are
-	            refused with a reason.
+	Anywhere    I drink a potion; 1 uses the class's level 1 skill (see `skills` below). Both cost a
+	            tick outside a fight, and a round inside one (the monster still gets its swing).
+	Reserved    2-4 (later skills) are valid letters for later phases. For now they are refused.
 Fight actions are not ticks. The world is frozen while you fight. Only moves tick (the TickLayer
 policy in DUNGEON_CONTENT says which kinds), and monsters act on ticks.
 
@@ -32,12 +33,13 @@ tune them (and a private copy can replace them) without touching the rules.
 const DUNGEON_CONTENT = {
 	// Which version of these rules a record was played under. Change it when a change here would
 	// make an old record replay differently.
-	rules: 2,
+	rules: 3,
 	maxLevel: 20,
 
 	// A hero's stats at level L are the class's base x (1 + growth x (L - 1)). Design 7.3: +15% HP
-	// and ATK per level, and a full SP refill (so SP and DEF do not grow).
-	heroGrowth: { hp: 0.15, atk: 0.15, def: 0, sp: 0 },
+	// and ATK per level, plus +10% SP per level (Mike, 2026-10-21) and a full SP refill on a level-up.
+	// DEF does not grow.
+	heroGrowth: { hp: 0.15, atk: 0.15, def: 0, sp: 0.10 },
 	// Levels of HP and SP growth a hero starts with, on top of its own level (a cushion for the early levels).
 	headStart: { hp: 10, sp: 3 },
 	// Monsters follow the same curve (design 3.6), and their XP grows by this factor per level.
@@ -45,10 +47,12 @@ const DUNGEON_CONTENT = {
 	monsterGrowth: 0.15,
 	monsterXpGrowth: 1.10,
 	// 1 SP back for this many steps (a 'move' result: walking, not turning).
-	stepsPerSp: 8,
+	stepsPerSp: 4,
+	// SP a Guard gives back.
+	guardSp: 2,
 
 	// Which kinds of move cost a tick. Same shape as TickLayer's policy.
-	tickPolicy: { move: true, turn: true, door: true, close: true, wait: true, trap: true, fall: true, rope: true, win: false },
+	tickPolicy: { move: true, turn: true, door: true, close: true, wait: true, trap: true, fall: true, rope: true, item: true, skill: true, win: false },
 
 	// Placement (design 3.1, 8.2).
 	cellsPerMonster: 12,
@@ -74,14 +78,47 @@ const DUNGEON_CONTENT = {
 	monsterCrit: 0.05,
 	trapDamage: { spikes: 0.15, dart: 0.10 },    // share of max HP
 
+	// Potions. Found ones lie on the floor (picked up by walking onto them): HP potions heal a share of
+	// max HP and SP potions restore a share of max SP, so they stay useful as the hero grows. SP
+	// potions are sized so a Mage that finds them all could Firebolt every monster (tools/balance/
+	// sp-potions.js). A hero may arrive with shop potions in `potions`: a number is an HP potion's
+	// share, {sp: share} an SP potion's; the shop's are weaker (`shopHeal`, `shopSp`). One bag for
+	// both kinds, at most `carry` (design 7.3a).
+	potions: { cellsPerPotion: 40, heal: 0.5, shopHeal: 0.25, cellsPerSpPotion: 40, sp: 0.5, shopSp: 0.25, carry: 8 },
+
+	// Passive charms, carried in the same bag and used up when they trigger (Mike, 2026-10-21):
+	//   feather  a fall (a drop, or an unseen pit) does no damage
+	//   hold     an unseen pit does not drop you: you stand on it and it is revealed
+	// A maze has 0 to `floorCharms` of them on the floor in all (Mike), each kind chosen at random; the
+	// shop sells both, and its copies arrive in `hero.potions` as the strings 'feather' and 'hold'. An
+	// unused one at the exit pays gold, less than its price (the backend's rule; the run summary says how
+	// many are left).
+	charms: { feather: { name: 'Feather Charm' }, hold: { name: 'Anchor Charm' } },
+	floorCharms: 2,
+
+	// The level 1 skill of each class, used with key 1 (design 7.2). `sp` is the cost.
+	//   power-strike  a hit worth `mult` x damage            backstab   `mult` x, on a first strike only
+	//   firebolt      spell damage that ignores DEF; out of a fight, burns a monster in the next cell
+	//   heal          restores `heal` of max HP
+	//   aimed-shot    a `mult` x hit; out of a fight, shoots a monster in line within `range` cells
+	//   flurry        `hits` hits, each worth `mult` x
+	skills: {
+		warrior: { name: 'Power Strike', kind: 'power-strike', sp: 4, mult: 1.8 },
+		rogue:   { name: 'Backstab',     kind: 'backstab',     sp: 4, mult: 3 },
+		mage:    { name: 'Firebolt',     kind: 'firebolt',     sp: 4 },
+		cleric:  { name: 'Heal',         kind: 'heal',         sp: 8, heal: 0.4 },
+		ranger:  { name: 'Aimed Shot',   kind: 'aimed-shot',   sp: 4, mult: 1.5, range: 6 },
+		monk:    { name: 'Flurry',       kind: 'flurry',       sp: 6, mult: 0.5, hits: 3 },
+	},
+
 	// Heroes (design 7.1). `crit` is the chance of a critical hit.
 	classes: {
-		warrior: { name: 'Warrior', hp: 30, sp: 6,  atk: 7, def: 5, spd: 4, crit: 0.05 },
-		rogue:   { name: 'Rogue',   hp: 20, sp: 10, atk: 6, def: 2, spd: 8, crit: 0.12 },
-		mage:    { name: 'Mage',    hp: 16, sp: 16, atk: 4, def: 1, spd: 5, crit: 0.05, spell: 9 },
-		cleric:  { name: 'Cleric',  hp: 24, sp: 12, atk: 5, def: 4, spd: 4, crit: 0.05 },
-		ranger:  { name: 'Ranger',  hp: 22, sp: 10, atk: 6, def: 3, spd: 7, crit: 0.05 },
-		monk:    { name: 'Monk',    hp: 22, sp: 10, atk: 5, def: 3, spd: 9, crit: 0.05 },
+		warrior: { name: 'Warrior', hp: 30, sp: 12, atk: 7, def: 5, spd: 4, crit: 0.05 },
+		rogue:   { name: 'Rogue',   hp: 20, sp: 20, atk: 6, def: 2, spd: 8, crit: 0.12 },
+		mage:    { name: 'Mage',    hp: 16, sp: 32, atk: 4, def: 1, spd: 5, crit: 0.05, spell: 9 },
+		cleric:  { name: 'Cleric',  hp: 24, sp: 24, atk: 5, def: 4, spd: 4, crit: 0.05 },
+		ranger:  { name: 'Ranger',  hp: 22, sp: 20, atk: 6, def: 3, spd: 7, crit: 0.05 },
+		monk:    { name: 'Monk',    hp: 22, sp: 20, atk: 5, def: 3, spd: 9, crit: 0.05 },
 	},
 
 	// Bestiary at level 1 (design 3.5). Behaviour flags:
@@ -141,6 +178,7 @@ function dungeonHeroStats(content, cls, level) {
 		maxHp: Math.round(c.hp * (1 + g.hp * (n + (content.headStart?.hp ?? 0)))),
 		maxSp: Math.round(c.sp * (1 + g.sp * (n + (content.headStart?.sp ?? 0)))),
 		atk: c.atk * (1 + g.atk * n),
+		spell: (c.spell ?? 0) * (1 + g.atk * n),
 		def: c.def * (1 + g.def * n),
 		spd: c.spd,
 		crit: c.crit,
@@ -184,8 +222,12 @@ class Dungeon {
 		this.exitDist = Math.max(1, this.dist.get(this.exit) ?? Math.max(...this.dist.values()));
 		this.monsters = [];
 		this.traps = [];
+		this.potions = [];
+		this.charms = [];
 		this.placeMonsters();
 		this.placeTraps();
+		this.placePotions();
+		this.placeCharms();
 	}
 
 	// Steps from the start to each cell, going through every wall the rules let a player through
@@ -307,6 +349,35 @@ class Dungeon {
 		}
 	}
 
+	// Potions on the floor: reachable cells away from the start and the entrances, own random stream.
+	placePotions() {
+		const content = this.content, maze = this.maze;
+		const rng = new Math.seedrandom(`${this.seed}:potions`);
+		const spots = maze.cellList.filter(c => this.dist.has(c) && this.dist.get(c) > content.minStartDistance && !this.entranceSet.has(c));
+		const count = Math.round(maze.cellList.length / content.potions.cellsPerPotion);
+		for (let i = 0; i < count && spots.length; ++i) {
+			this.potions.push({ cell: spots.splice(Math.floor(rng() * spots.length), 1)[0], heal: content.potions.heal });
+		}
+		const spCount = Math.round(maze.cellList.length / content.potions.cellsPerSpPotion);
+		for (let i = 0; i < spCount && spots.length; ++i) {
+			this.potions.push({ cell: spots.splice(Math.floor(rng() * spots.length), 1)[0], sp: content.potions.sp });
+		}
+	}
+
+	// Charms on the floor: like potions, but never on a hole or pit, with a stream of their own.
+	placeCharms() {
+		const content = this.content, maze = this.maze;
+		const rng = new Math.seedrandom(`${this.seed}:charms`);
+		const taken = new Set(this.potions.map(x => x.cell));
+		const spots = maze.cellList.filter(c => this.dist.has(c) && this.dist.get(c) > content.minStartDistance && !this.entranceSet.has(c) && !c.data.hole && !taken.has(c));
+		const kinds = Object.keys(content.charms);
+		const count = Math.floor(rng() * (content.floorCharms + 1));
+		for (let i = 0; i < count && spots.length; ++i) {
+			const cell = spots.splice(Math.floor(rng() * spots.length), 1)[0];
+			this.charms.push({ cell, charm: kinds[Math.floor(rng() * kinds.length)] });
+		}
+	}
+
 	// A monster's level for a band whose monsters start at level `first` and span `width` levels.
 	monsterLevel(monster, first, width) {
 		return Math.max(1, first + Math.round(monster.depth * width) + monster.jitter);
@@ -340,6 +411,11 @@ class DungeonGame {
 		if (!Array.isArray(hero.xpTable) || !hero.monsters || !(hero.monsters.first >= 1) || !(hero.monsters.width >= 0)) {
 			throw new Error('the hero needs xpTable and monsters {first, width}');
 		}
+		const carried = hero.potions ?? [];
+		const share = x => typeof x == 'string' ? x in content.charms : (typeof x == 'number' ? x : x?.sp) > 0 && (typeof x == 'number' ? x : x?.sp) <= 1;
+		if (!Array.isArray(carried) || carried.length > content.potions.carry || !carried.every(share)) {
+			throw new Error('hero potions must be a short list of shares (0 to 1], a number for HP or {sp: share} for SP, or a charm name');
+		}
 		this.maze = maze;
 		this.dungeon = dungeon;
 		this.hero = hero;
@@ -371,7 +447,11 @@ class DungeonGame {
 		this.maxDist = 0;            // furthest from the start the hero got, in steps
 		this.usedTraps = new Set();  // darts and alarms go off once
 		this.seenTraps = new Set();  // traps the hero has set off
-		this.counts = { fights: 0, attacks: 0, hits: 0, fleeTries: 0, fleeWins: 0, damageTaken: 0, damageDealt: 0 };
+		this.bag = carried.map(x => typeof x == 'string' ? { charm: x, found: false } : typeof x == 'number' ? { heal: x, found: false } : { sp: x.sp, found: false });   // potions carried, oldest first
+		this.potionAt = new Map(dungeon.potions.map(x => [x.cell, x]));
+		this.charmAt = new Map(dungeon.charms.map(x => [x.cell, x]));
+		this.player.fallGuard = (cell, via) => via == 'step' && this.useCharm('hold');
+		this.counts = { fights: 0, attacks: 0, hits: 0, fleeTries: 0, fleeWins: 0, damageTaken: 0, damageDealt: 0, skills: 0, potionsFound: 0, potionsDrunk: 0 };
 
 		// Scent: the last 8 cells the hero stood in, newest with the highest number.
 		this.trail = [];
@@ -419,8 +499,10 @@ class DungeonGame {
 	}
 
 	exploreAct(letter) {
+		if (letter == 'I') return this.drinkPotion();
+		if (letter == '1') return this.useSkillExploring();
 		if (!'FBLRUDWC'.includes(letter) || letter.length != 1) {
-			if ('1234I'.includes(letter) && letter.length == 1) return { ok: false, reason: 'skills and items are not available yet' };
+			if ('234'.includes(letter) && letter.length == 1) return { ok: false, reason: 'that skill is not available yet' };
 			if ('AGX'.includes(letter) && letter.length == 1) return { ok: false, reason: 'no fight in progress' };
 			return { ok: false, reason: `${letter} is not an action` };
 		}
@@ -449,7 +531,7 @@ class DungeonGame {
 			// Dropped a floor: it hurts, and there is no stepping back up (so no fleeing that way).
 			this.prev = null;
 			this.emit({ type: 'fall', via: result.via });
-			this.hurtHero(fallDamage(this.stats.maxHp));
+			if (!this.useCharm('feather')) this.hurtHero(fallDamage(this.stats.maxHp));
 			if (this.outcome) return;
 		}
 		this.enterCell(cell);
@@ -460,6 +542,19 @@ class DungeonGame {
 		const trap = this.trapAt.get(cell);
 		if (trap) this.springOnHero(trap);
 		if (this.outcome) return;
+		const charm = this.charmAt.get(cell);
+		if (charm && this.bag.length < this.content.potions.carry) {
+			this.charmAt.delete(cell);
+			this.bag.push({ charm: charm.charm, found: true });
+			this.emit({ type: 'charm-found', charm: charm.charm, cell: cell.loc });
+		}
+		const potion = this.potionAt.get(cell);
+		if (potion && this.bag.length < this.content.potions.carry) {
+			this.potionAt.delete(cell);
+			this.bag.push({ heal: potion.heal, sp: potion.sp, found: true });
+			++this.counts.potionsFound;
+			this.emit({ type: 'potion-found', cell: cell.loc });
+		}
 		const monster = this.occupied.get(cell);
 		if (monster) {
 			// You get the first strike on a monster that had not noticed you.
@@ -535,10 +630,14 @@ class DungeonGame {
 
 	// Can the monster see the hero? Same floor, same row or column, nothing in the way, in range.
 	canSee(m) {
-		const here = m.cell, there = this.playerCell();
+		return this.lineClear(m.cell, this.playerCell(), m.spec.sight);
+	}
+
+	// Two cells on the same floor, in one row or column, within `range`, with nothing in between.
+	lineClear(here, there, range) {
 		if (here.loc[0] != there.loc[0]) return false;
 		const dy = there.loc[1] - here.loc[1], dx = there.loc[2] - here.loc[2];
-		if ((dx != 0 && dy != 0) || Math.abs(dx) + Math.abs(dy) > m.spec.sight) return false;
+		if ((dx != 0 && dy != 0) || Math.abs(dx) + Math.abs(dy) > range) return false;
 		const dir = dx > 0 ? 'E' : dx < 0 ? 'W' : dy > 0 ? 'S' : 'N';
 		for (let cell = here; cell !== there;) {
 			const v = cell.data[dir];
@@ -753,19 +852,23 @@ class DungeonGame {
 
 	// One round: both sides act, the faster first (the hero on a tie, or on a first strike).
 	fightAct(letter) {
-		if (letter.length != 1 || !'AGX'.includes(letter)) {
-			if ('1234I'.includes(letter) && letter.length == 1) return { ok: false, reason: 'skills and items are not available yet' };
+		if (letter.length != 1 || !'AGXI1'.includes(letter)) {
+			if ('234'.includes(letter) && letter.length == 1) return { ok: false, reason: 'that skill is not available yet' };
 			if ('FBLRUDWC'.includes(letter) && letter.length == 1) return { ok: false, reason: 'you are in a fight' };
 			return { ok: false, reason: `${letter} is not an action` };
 		}
 		const f = this.fight, m = f.monster;
+		const refusal = letter == 'I' ? this.potionRefusal() : letter == '1' ? this.skillRefusal(true) : null;
+		if (refusal) return { ok: false, reason: refusal };
 		++f.round;
 		this.guarding = letter == 'G';
-		if (this.guarding) this.sp = Math.min(this.stats.maxSp, this.sp + 1);
+		if (this.guarding) this.sp = Math.min(this.stats.maxSp, this.sp + this.content.guardSp);
 		const heroFirst = (f.round == 1 && f.firstStrike) || this.stats.spd >= m.spd;
 		const heroActs = () => {
 			if (letter == 'A') this.heroAttacks(m);
 			else if (letter == 'X') this.heroFlees(m);
+			else if (letter == 'I') this.quaff();
+			else if (letter == '1') this.castSkill(m);
 		};
 		const monsterActs = () => this.monsterAttacks(m);
 		if (heroFirst) {
@@ -796,11 +899,14 @@ class DungeonGame {
 		return Math.max(1, Math.round(damage * multiplier));
 	}
 
-	heroAttacks(m) {
+	heroAttacks(m, multiplier = 1) {
 		++this.counts.attacks;
-		const damage = this.strike(this.stats.atk, m.def, this.stats.spd, m.spd, this.stats.crit);
+		const damage = this.strike(this.stats.atk, m.def, this.stats.spd, m.spd, this.stats.crit, multiplier);
 		this.emit({ type: 'hero-attack', monster: m.id, damage });
-		if (!damage) return;
+		if (damage) this.hitMonster(m, damage);
+	}
+
+	hitMonster(m, damage) {
 		++this.counts.hits;
 		this.counts.damageDealt += damage;
 		m.hp -= damage;
@@ -808,6 +914,130 @@ class DungeonGame {
 			this.fight = null;
 			this.kill(m);
 		}
+	}
+
+	// ---- potions and skills ----
+
+	// The oldest potion that would do some good: an HP potion when hurt, an SP potion when SP is down.
+	pickPotion() {
+		return this.bag.findIndex(x => x.charm ? false : x.sp ? this.sp < this.stats.maxSp : this.hp < this.stats.maxHp);
+	}
+
+	// Uses up a charm if the bag has one of that kind. Returns whether it did.
+	useCharm(kind) {
+		const i = this.bag.findIndex(x => x.charm == kind);
+		if (i < 0) return false;
+		this.bag.splice(i, 1);
+		this.emit({ type: 'charm', charm: kind });
+		return true;
+	}
+
+	potionRefusal() {
+		if (!this.bag.some(x => !x.charm)) return 'no potion to drink';
+		if (this.pickPotion() < 0) return 'no potion would help';
+		return null;
+	}
+
+	// Drink that potion.
+	quaff() {
+		const potion = this.bag.splice(this.pickPotion(), 1)[0];
+		++this.counts.potionsDrunk;
+		if (potion.sp) {
+			const restored = Math.min(this.stats.maxSp - this.sp, Math.ceil(this.stats.maxSp * potion.sp));
+			this.sp += restored;
+			this.emit({ type: 'potion', restored });
+			return;
+		}
+		const healed = Math.min(this.stats.maxHp - this.hp, Math.ceil(this.stats.maxHp * potion.heal));
+		this.hp += healed;
+		this.emit({ type: 'potion', healed });
+	}
+
+	drinkPotion() {
+		const refusal = this.potionRefusal();
+		if (refusal) return { ok: false, reason: refusal };
+		this.quaff();
+		this.player.onMove('I', { type: 'item' });
+		return { ok: true, type: 'item' };
+	}
+
+	// The nearest monster the hero could shoot from here, or null.
+	shotTarget(range) {
+		const here = this.playerCell();
+		let best = null, bestDist = Infinity;
+		for (const m of this.monsters) {
+			if (!m.alive || !this.lineClear(here, m.cell, range)) continue;
+			const d = this.distance(here, m.cell);
+			if (d < bestDist) { best = m; bestDist = d; }
+		}
+		return best;
+	}
+
+	// Why the level 1 skill cannot be used now, or null. `inFight` says which kind of moment it is.
+	skillRefusal(inFight) {
+		const k = this.content.skills[this.hero.cls];
+		if (this.sp < k.sp) return `not enough SP for ${k.name}`;
+		if (k.kind == 'heal') return this.hp >= this.stats.maxHp ? 'already at full health' : null;
+		if (k.kind == 'aimed-shot') return inFight || this.shotTarget(k.range) ? null : 'nothing in line to shoot';
+		if (k.kind == 'firebolt') return inFight || this.shotTarget(1) ? null : 'nothing in the next cell to burn';
+		if (!inFight) return `${k.name} is used in a fight`;
+		if (k.kind == 'backstab' && !(this.fight.round == 0 && this.fight.firstStrike)) return 'Backstab needs a first strike';
+		return null;
+	}
+
+	// The skill in a fight: it takes the hero's action for the round.
+	castSkill(m) {
+		const k = this.content.skills[this.hero.cls];
+		this.sp -= k.sp;
+		++this.counts.skills;
+		this.emit({ type: 'skill', skill: k.kind });
+		if (k.kind == 'heal') this.healSelf(k);
+		else if (k.kind == 'firebolt') this.firebolt(m);
+		else if (k.kind == 'flurry') {
+			for (let i = 0; i < k.hits && this.fight; ++i) this.heroAttacks(m, k.mult);
+		}
+		else this.heroAttacks(m, k.mult);   // power-strike, backstab, aimed-shot
+	}
+
+	// Spell damage ignores DEF and needs no to-hit roll.
+	firebolt(m) {
+		++this.counts.attacks;
+		const damage = Math.max(1, Math.round(this.stats.spell * (0.85 + 0.3 * this.dice.next())));
+		this.emit({ type: 'hero-attack', monster: m.id, damage });
+		this.hitMonster(m, damage);
+	}
+
+	healSelf(k) {
+		const healed = Math.min(this.stats.maxHp - this.hp, Math.ceil(this.stats.maxHp * k.heal));
+		this.hp += healed;
+		this.emit({ type: 'heal', healed });
+	}
+
+	// The skill outside a fight: Heal, Aimed Shot at a monster in line, or Firebolt at one in the next cell. Costs a tick.
+	useSkillExploring() {
+		const refusal = this.skillRefusal(false);
+		if (refusal) return { ok: false, reason: refusal };
+		const k = this.content.skills[this.hero.cls];
+		this.sp -= k.sp;
+		++this.counts.skills;
+		this.emit({ type: 'skill', skill: k.kind });
+		if (k.kind == 'heal') this.healSelf(k);
+		else if (k.kind == 'firebolt') {
+			const m = this.shotTarget(1);
+			this.firebolt(m);
+			if (m.alive) { m.state = 'chase'; m.target = this.playerCell(); }
+		}
+		else {
+			const m = this.shotTarget(k.range);
+			++this.counts.attacks;
+			const damage = this.strike(this.stats.atk, m.def, this.stats.spd, m.spd, this.stats.crit, k.mult);
+			this.emit({ type: 'hero-attack', monster: m.id, damage });
+			if (damage) this.hitMonster(m, damage);
+			// A monster that survives the shot knows where it came from.
+			if (m.alive) { m.state = 'chase'; m.target = this.playerCell(); }
+		}
+		this.player.onMove('1', { type: 'skill' });
+		return { ok: true, type: 'skill' };
 	}
 
 	monsterAttacks(m) {
@@ -875,6 +1105,9 @@ class DungeonGame {
 			level: this.level,
 			endLevel: dungeonLevelForXp(this.hero.xpTable, this.hero.xp + grantedXp, this.content.maxLevel),
 			hp: this.hp,
+			sp: this.sp,
+			potionsLeft: { found: this.bag.filter(x => x.found && !x.charm).length, carried: this.bag.filter(x => !x.found && !x.charm).length },
+			charmsLeft: this.bag.filter(x => x.charm).length,
 			stats: { ...this.counts, rolls: this.dice.rolls },
 		};
 	}

@@ -65,6 +65,9 @@ class MazePlayer {
 		this.revealedPits = new Set();
 		this.ropedHoles = new Set();
 		this.ropes = 0;
+		// Optional: fallGuard(cell, via) returns true to stop a fall that was not chosen (an unseen pit).
+		// The pit is then revealed and the player stands on it. Whoever sets up the run installs it.
+		this.fallGuard = null;
 	}
 
 	get moves() {
@@ -216,6 +219,10 @@ class MazePlayer {
 	landOn() {
 		const cell = this.cell();
 		if (cell.data.pit && !this.revealedPits.has(`${cell.loc}`)) {
+			if (this.fallGuard && this.fallGuard(cell, 'step')) {
+				this.revealedPits.add(`${cell.loc}`);
+				return { type: 'move' };
+			}
 			this.fall(cell);
 			return { type: 'fall', via: 'step' };
 		}
