@@ -151,6 +151,9 @@ class MazeHtml{
 		this.mapHtml = this.generateMapHtml();
 		this.helpFxn = null;
 		this.music = null;
+		// How much longer than normal animations last: 1 is the usual pace, 2 is half speed.
+		// Change it with setAnimationSpeed().
+		this.slowFactor = 1;
 		this.walls = [];
 		this.items = [];
 		this.doors = [];
@@ -671,6 +674,19 @@ PgDn Descend<br />
 		return null;
 	}
 	
+	/*
+	Slow-motion for the animations (turns, steps, ladders, doors). speed is a share of the usual
+	pace: 1 is normal, 0.5 is half speed. It can go down to 0.25 but never above 1: the server
+	treats moves quicker than the usual animations as impossible, so a faster game would be flagged.
+	Takes effect from the next animation, so it can be changed while playing.
+	*/
+	setAnimationSpeed(speed) {
+		const share = Math.min(1, Math.max(0.25, Number(speed) || 1));
+		this.slowFactor = 1 / share;
+		// The stylesheet reads this for the durations it sets itself (see ui/css/maze.css).
+		document.documentElement.style.setProperty('--maze-slow', String(this.slowFactor));
+	}
+
 	playGame(winFunc = null, loseFunc = null) {
 		const mapElement=$('#map');
 		const mazeElement=$('#maze');
@@ -678,13 +694,15 @@ PgDn Descend<br />
 		const mazeRotateElement=$('#mazeRotate');
 		const maze = this.maze;
 		const mazehtmlui = this;
+		// A duration in milliseconds, stretched by the animation speed setting.
+		const ms = n => `${Math.round(n * mazehtmlui.slowFactor)}ms`;
 
 		// Between the time the UI was made and now, the maze could have been generated.
 		// Define the visual characteristics of the maze.
 
 		// Now update css for the game.
 		// Create the .item class.
-		let item = this.styleSheet.insertRule(`.item {height:100vmin; width:100vmin;transition: transform 0.5s;background-size: contain;}`);
+		let item = this.styleSheet.insertRule(`.item {height:100vmin; width:100vmin;transition: transform calc(0.5s * var(--maze-slow, 1));background-size: contain;}`);
 		this.cssRules = {
 			item: this.styleSheet.cssRules[item]
 		}
@@ -822,7 +840,7 @@ PgDn Descend<br />
 				switch (event) {
 					case 'trapEntrance':
 						const wall = $('.trapEntrance');
-						wall.removeClass('trapEntrance').css({transition:'transform steps(5, jump-both) 2000ms',transform: 'translate3d(-50vmin, -50vmin, 0vmin)'});
+						wall.removeClass('trapEntrance').css({transition:`transform steps(5, jump-both) ${ms(2000)}`,transform: 'translate3d(-50vmin, -50vmin, 0vmin)'});
 						// Play the sound
 						playSound(localThis.getClip('close'));
 						// Set the state.
@@ -910,7 +928,7 @@ PgDn Descend<br />
 				// Update the UI
 				const lift = action == 'U' ? 100 : -100;
 				animationState = action == 'U' ? 'up' : 'down';
-				mazeTranslateElement.css({'transition':'transform cubic-bezier(0.36, 0, 0.66, -0.56) 1500ms','transform':`translate3d(${-100*pX}vmin, ${lift}vmin, ${-100*pY}vmin)`});
+				mazeTranslateElement.css({'transition':`transform cubic-bezier(0.36, 0, 0.66, -0.56) ${ms(1500)}`,'transform':`translate3d(${-100*pX}vmin, ${lift}vmin, ${-100*pY}vmin)`});
 				// Play ladder sound
 				playSound(localThis.getClip('ladder'));
 				return false; // action in progress
@@ -970,7 +988,7 @@ PgDn Descend<br />
 					mapElement.empty().prepend(mapHtml[pZ]);
 					mazeTranslateElement.prepend(mazeHtml[pZ]);
 					hideOutOfRangeCells(pX, pY, pZ, viewRange);
-					mazeTranslateElement.css({'transition':'transform ease-out 1500ms','transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
+					mazeTranslateElement.css({'transition':`transform ease-out ${ms(1500)}`,'transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
 					animationState = 'up3';
 					// Play ladder sound
 					playSound(localThis.getClip('ladder'));
@@ -991,7 +1009,7 @@ PgDn Descend<br />
 					mapElement.empty().prepend(mapHtml[pZ]);
 					mazeTranslateElement.prepend(mazeHtml[pZ]);
 					hideOutOfRangeCells(pX, pY, pZ, viewRange);
-					mazeTranslateElement.css({'transition':'transform ease-out 1500ms','transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
+					mazeTranslateElement.css({'transition':`transform ease-out ${ms(1500)}`,'transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
 					animationState = 'down3';
 					// Play ladder sound
 					playSound(localThis.getClip('ladder'));
