@@ -76,8 +76,10 @@ By opening a pull request, you agree that:
    money, a share of income, or any other compensation, now or later, for your contribution
    or for its use in randomazegame.com or anywhere else.
 
-What you do get: your name in the git history and in the release notes, our thanks, and a
-maze engine that keeps getting better for everyone who uses it, you included.
+What you do get: your name in [CONTRIBUTORS.md](CONTRIBUTORS.md), on the credits of
+randomazegame.com, and in the release notes, plus our thanks and a maze engine that keeps
+getting better for everyone who uses it, you included. Tell us in your pull request if you'd
+like a different name or link, or would rather not be listed.
 
 ### Signing off your commits
 
