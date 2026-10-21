@@ -62,7 +62,18 @@ const run = (game, letters) => {
 		assert.ok(r.ok, `${letter}: ${r.reason}`);
 	}
 };
-const blind = () => { const c = structuredClone(DUNGEON_CONTENT); for (const m of Object.values(c.monsters)) m.sight = 0; return c; };
+// The rules tests pin the numbers they were written against, so retuning DUNGEON_CONTENT (monster
+// strength, the hero's head start) does not break them. They still use the shipped behaviour flags.
+const RULES_STATS = {
+	rat: [6, 3], slime: [12, 3], bat: [5, 2], goblin: [14, 5], skeleton: [18, 6], spider: [12, 5], orc: [28, 8], wraith: [20, 7], guardian: [50, 10],
+};
+const pinned = () => {
+	const c = structuredClone(DUNGEON_CONTENT);
+	c.headStart = { hp: 0, sp: 0 };
+	for (const [name, m] of Object.entries(c.monsters)) [m.hp, m.atk] = RULES_STATS[name];
+	return c;
+};
+const blind = () => { const c = pinned(); for (const m of Object.values(c.monsters)) m.sight = 0; return c; };
 
 // ---------------------------------------------------------------- building the dungeon
 
@@ -229,7 +240,7 @@ test('walking into a monster that has not noticed you gives the first strike, ev
 });
 
 test('without a first strike the faster side swings first', () => {
-	const game = setup({ monsters: [{ species: 'rat', col: 3 }] });
+	const game = setup({ content: pinned(), monsters: [{ species: 'rat', col: 3 }] });
 	run(game, 'W');                                // the rat notices the hero
 	run(game, 'W');                                // and closes in
 	run(game, 'W');

@@ -32,12 +32,14 @@ tune them (and a private copy can replace them) without touching the rules.
 const DUNGEON_CONTENT = {
 	// Which version of these rules a record was played under. Change it when a change here would
 	// make an old record replay differently.
-	rules: 1,
+	rules: 2,
 	maxLevel: 20,
 
 	// A hero's stats at level L are the class's base x (1 + growth x (L - 1)). Design 7.3: +15% HP
 	// and ATK per level, and a full SP refill (so SP and DEF do not grow).
 	heroGrowth: { hp: 0.15, atk: 0.15, def: 0, sp: 0 },
+	// Levels of HP and SP growth a hero starts with, on top of its own level (a cushion for the early levels).
+	headStart: { hp: 10, sp: 3 },
 	// Monsters follow the same curve (design 3.6), and their XP grows by this factor per level.
 	// The balance bot tunes both.
 	monsterGrowth: 0.15,
@@ -91,15 +93,15 @@ const DUNGEON_CONTENT = {
 	//   flees     breaks off a fight at low HP (once)
 	//   deadEnd   placed in dead ends;  pair: placed with a second one next to it
 	monsters: {
-		rat:      { tier: 1, hp: 6,  atk: 3,  def: 0, spd: 6, sight: 3, speed: 'normal', wanders: true,  leash: 4, pair: true },
-		slime:    { tier: 1, hp: 12, atk: 3,  def: 2, spd: 1, sight: 2, speed: 'slow',   wanders: true,  leash: 3 },
-		bat:      { tier: 1, hp: 5,  atk: 2,  def: 0, spd: 9, sight: 5, speed: 'fast',   wanders: true,  leash: 6, erratic: 0.4 },
-		goblin:   { tier: 2, hp: 14, atk: 5,  def: 2, spd: 5, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true, flees: true },
-		skeleton: { tier: 2, hp: 18, atk: 6,  def: 4, spd: 3, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true },
-		spider:   { tier: 2, hp: 12, atk: 5,  def: 1, spd: 7, sight: 4, speed: 'normal', wanders: false, leash: 0, deadEnd: true },
-		orc:      { tier: 3, hp: 28, atk: 8,  def: 4, spd: 4, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true },
-		wraith:   { tier: 3, hp: 20, atk: 7,  def: 6, spd: 6, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true, passDoors: true },
-		guardian: { tier: 4, hp: 50, atk: 10, def: 6, spd: 5, sight: 4, speed: 'normal', wanders: false, leash: 2, boss: true },
+		rat:      { tier: 1, hp: 5.4, atk: 2.7, def: 0, spd: 6, sight: 3, speed: 'normal', wanders: true,  leash: 4, pair: true },
+		slime:    { tier: 1, hp: 10.8, atk: 2.7, def: 2, spd: 1, sight: 2, speed: 'slow',   wanders: true,  leash: 3 },
+		bat:      { tier: 1, hp: 4.5, atk: 1.8, def: 0, spd: 9, sight: 5, speed: 'fast',   wanders: true,  leash: 6, erratic: 0.4 },
+		goblin:   { tier: 2, hp: 7.6, atk: 2.7, def: 2, spd: 5, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true, flees: true },
+		skeleton: { tier: 2, hp: 9.8, atk: 3.3, def: 4, spd: 3, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true },
+		spider:   { tier: 2, hp: 6.5, atk: 2.7, def: 1, spd: 7, sight: 4, speed: 'normal', wanders: false, leash: 0, deadEnd: true },
+		orc:      { tier: 3, hp: 12.7, atk: 3.6, def: 4, spd: 4, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true },
+		wraith:   { tier: 3, hp: 9.1, atk: 3.2, def: 6, spd: 6, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true, passDoors: true },
+		guardian: { tier: 4, hp: 19.1, atk: 3.8, def: 6, spd: 5, sight: 4, speed: 'normal', wanders: false, leash: 2, boss: true },
 	},
 
 	// A placeholder table of cumulative XP for each level (index 0 is level 1). The server passes
@@ -136,8 +138,8 @@ const clampNumber = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 function dungeonHeroStats(content, cls, level) {
 	const c = content.classes[cls], g = content.heroGrowth, n = level - 1;
 	return {
-		maxHp: Math.round(c.hp * (1 + g.hp * n)),
-		maxSp: Math.round(c.sp * (1 + g.sp * n)),
+		maxHp: Math.round(c.hp * (1 + g.hp * (n + (content.headStart?.hp ?? 0)))),
+		maxSp: Math.round(c.sp * (1 + g.sp * (n + (content.headStart?.sp ?? 0)))),
 		atk: c.atk * (1 + g.atk * n),
 		def: c.def * (1 + g.def * n),
 		spd: c.spd,
