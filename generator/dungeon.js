@@ -113,12 +113,12 @@ const DUNGEON_CONTENT = {
 
 	// Heroes (design 7.1). `crit` is the chance of a critical hit.
 	classes: {
-		warrior: { name: 'Warrior', hp: 46, sp: 12, atk: 7, def: 5, spd: 4, crit: 0.05 },
-		rogue:   { name: 'Rogue',   hp: 34, sp: 20, atk: 6, def: 2, spd: 8, crit: 0.12 },
+		warrior: { name: 'Warrior', hp: 46, sp: 12, atk: 9, def: 5, spd: 4, crit: 0.05 },
+		rogue:   { name: 'Rogue',   hp: 34, sp: 20, atk: 9, def: 2, spd: 8, crit: 0.12 },
 		mage:    { name: 'Mage',    hp: 30, sp: 32, atk: 4, def: 1, spd: 5, crit: 0.05, spell: 9 },
 		cleric:  { name: 'Cleric',  hp: 37, sp: 24, atk: 5, def: 4, spd: 4, crit: 0.05 },
-		ranger:  { name: 'Ranger',  hp: 37, sp: 20, atk: 6, def: 3, spd: 7, crit: 0.05 },
-		monk:    { name: 'Monk',    hp: 39, sp: 20, atk: 5, def: 3, spd: 9, crit: 0.05 },
+		ranger:  { name: 'Ranger',  hp: 37, sp: 20, atk: 8.5, def: 3, spd: 7, crit: 0.05 },
+		monk:    { name: 'Monk',    hp: 39, sp: 20, atk: 9.5, def: 3, spd: 9, crit: 0.05 },
 	},
 
 	// Bestiary at level 1 (design 3.5). Behaviour flags:
