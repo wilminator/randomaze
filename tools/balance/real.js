@@ -40,6 +40,7 @@ if (override.trapDamage) Object.assign(content.trapDamage, override.trapDamage);
 for (const k of ['monsterGrowth', 'monsterXpGrowth', 'cellsPerMonster']) if (override[k] !== undefined) content[k] = override[k];
 if (override.monsterPower !== undefined) for (const m of Object.values(content.monsters)) { m.hp *= override.monsterPower; m.atk *= override.monsterPower; }
 Object.assign(content.heroGrowth, override.heroGrowth ?? {});
+if (override.potions) Object.assign(content.potions, override.potions);   // e.g. {"cellsPerSpPotion":100000} for none
 if (override.headStart) content.headStart = {hp: 0, sp: 0, ...override.headStart};   // e.g. {"hp":10,"sp":3}   // e.g. {"def":0.15,"sp":0.15}
 for (const [cls, o] of Object.entries(override.classes ?? {})) Object.assign(content.classes[cls], o);   // e.g. {"mage":{"sp":99}}
 for (const [cls, p] of Object.entries(override.classPower ?? {})) { content.classes[cls].atk *= p; if (content.classes[cls].spell) content.classes[cls].spell *= p; }
@@ -78,15 +79,16 @@ const USE_SKILLS = process.env.SKILLS !== '0', USE_POTIONS = process.env.POTIONS
 function botAction(game) {
 	const maxHp = game.stats.maxHp, k = game.content.skills[game.hero.cls], hpShare = game.hp / maxHp;
 	const canCast = USE_SKILLS && game.sp >= k.sp;
+	if (USE_POTIONS && USE_SKILLS && !canCast && game.bag.some(x => x.sp) && (game.fight || game.sp < game.stats.maxSp * 0.5)) return 'I';
 	if (game.fight) {
-		if (USE_POTIONS && hpShare < 0.4 && game.bag.length) return 'I';
+		if (USE_POTIONS && hpShare < 0.4 && game.bag.some(x => !x.sp)) return 'I';
 		if (canCast && k.kind == 'heal' && hpShare < 0.5) return '1';
 		if (hpShare < 0.3) return 'X';
 		if (canCast && k.kind == 'backstab') return game.fight.round == 0 && game.fight.firstStrike ? '1' : 'A';
 		if (canCast && k.kind != 'heal') return '1';
 		return 'A';
 	}
-	if (USE_POTIONS && hpShare < 0.5 && game.bag.length) return 'I';
+	if (USE_POTIONS && hpShare < 0.5 && game.bag.some(x => !x.sp)) return 'I';
 	if (canCast && k.kind == 'heal' && hpShare < 0.6) return '1';
 	if (canCast && k.kind == 'aimed-shot' && game.shotTarget(k.range)) return '1';
 	if (canCast && k.kind == 'firebolt' && process.env.FIRE1 === '1' && game.shotTarget(1)) return '1';
@@ -120,7 +122,7 @@ for (const cls of CLASSES) {
 				const b = built[d];
 				const first = 1 + (bandOf(L, width) + diff) * width;
 				for (let k = 0; k < nonces; ++k) {
-					const hero = {cls, level: L, xp: 0, safeShare: 1, xpTable: NEVER, monsters: {first, width}};
+					const hero = {cls, level: L, xp: 0, safeShare: 1, xpTable: NEVER, monsters: {first, width}, ...JSON.parse(process.env.HERO ?? '{}')};
 					const game = new DungeonGame(b.maze, b.dungeon, hero, `bal${d}_${k}`);
 					let guard = 0, wasFight = false;
 					while (!game.outcome && game.actions.length < 6000 && ++guard < 12000) {

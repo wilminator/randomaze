@@ -78,10 +78,13 @@ const DUNGEON_CONTENT = {
 	monsterCrit: 0.05,
 	trapDamage: { spikes: 0.15, dart: 0.10 },    // share of max HP
 
-	// Potions. Found ones lie on the floor (picked up by walking onto them) and heal a share of max
-	// HP, so they stay useful as the hero grows. A hero may arrive with `potions` (shop potions, a
-	// list of shares, weaker). The bag holds at most `carry` (design 7.3a).
-	potions: { cellsPerPotion: 40, heal: 0.5, shopHeal: 0.25, carry: 8 },
+	// Potions. Found ones lie on the floor (picked up by walking onto them): HP potions heal a share of
+	// max HP and SP potions restore a share of max SP, so they stay useful as the hero grows. SP
+	// potions are sized so a Mage that finds them all could Firebolt every monster (tools/balance/
+	// sp-potions.js). A hero may arrive with shop potions in `potions`: a number is an HP potion's
+	// share, {sp: share} an SP potion's; the shop's are weaker (`shopHeal`, `shopSp`). One bag for
+	// both kinds, at most `carry` (design 7.3a).
+	potions: { cellsPerPotion: 40, heal: 0.5, shopHeal: 0.25, cellsPerSpPotion: 40, sp: 0.5, shopSp: 0.25, carry: 8 },
 
 	// The level 1 skill of each class, used with key 1 (design 7.2). `sp` is the cost.
 	//   power-strike  a hit worth `mult` x damage            backstab   `mult` x, on a first strike only
@@ -343,6 +346,10 @@ class Dungeon {
 		for (let i = 0; i < count && spots.length; ++i) {
 			this.potions.push({ cell: spots.splice(Math.floor(rng() * spots.length), 1)[0], heal: content.potions.heal });
 		}
+		const spCount = Math.round(maze.cellList.length / content.potions.cellsPerSpPotion);
+		for (let i = 0; i < spCount && spots.length; ++i) {
+			this.potions.push({ cell: spots.splice(Math.floor(rng() * spots.length), 1)[0], sp: content.potions.sp });
+		}
 	}
 
 	// A monster's level for a band whose monsters start at level `first` and span `width` levels.
@@ -379,8 +386,9 @@ class DungeonGame {
 			throw new Error('the hero needs xpTable and monsters {first, width}');
 		}
 		const carried = hero.potions ?? [];
-		if (!Array.isArray(carried) || carried.length > content.potions.carry || !carried.every(x => x > 0 && x <= 1)) {
-			throw new Error('hero potions must be a short list of heal shares (0 to 1]');
+		const share = x => (typeof x == 'number' ? x : x?.sp) > 0 && (typeof x == 'number' ? x : x?.sp) <= 1;
+		if (!Array.isArray(carried) || carried.length > content.potions.carry || !carried.every(share)) {
+			throw new Error('hero potions must be a short list of shares (0 to 1], a number for HP or {sp: share} for SP');
 		}
 		this.maze = maze;
 		this.dungeon = dungeon;
@@ -413,7 +421,7 @@ class DungeonGame {
 		this.maxDist = 0;            // furthest from the start the hero got, in steps
 		this.usedTraps = new Set();  // darts and alarms go off once
 		this.seenTraps = new Set();  // traps the hero has set off
-		this.bag = carried.map(heal => ({ heal, found: false }));   // potions carried, oldest first
+		this.bag = carried.map(x => typeof x == 'number' ? { heal: x, found: false } : { sp: x.sp, found: false });   // potions carried, oldest first
 		this.potionAt = new Map(dungeon.potions.map(x => [x.cell, x]));
 		this.counts = { fights: 0, attacks: 0, hits: 0, fleeTries: 0, fleeWins: 0, damageTaken: 0, damageDealt: 0, skills: 0, potionsFound: 0, potionsDrunk: 0 };
 
@@ -509,7 +517,7 @@ class DungeonGame {
 		const potion = this.potionAt.get(cell);
 		if (potion && this.bag.length < this.content.potions.carry) {
 			this.potionAt.delete(cell);
-			this.bag.push({ heal: potion.heal, found: true });
+			this.bag.push({ heal: potion.heal, sp: potion.sp, found: true });
 			++this.counts.potionsFound;
 			this.emit({ type: 'potion-found', cell: cell.loc });
 		}
@@ -876,18 +884,29 @@ class DungeonGame {
 
 	// ---- potions and skills ----
 
+	// The oldest potion that would do some good: an HP potion when hurt, an SP potion when SP is down.
+	pickPotion() {
+		return this.bag.findIndex(x => x.sp ? this.sp < this.stats.maxSp : this.hp < this.stats.maxHp);
+	}
+
 	potionRefusal() {
 		if (this.bag.length == 0) return 'no potion to drink';
-		if (this.hp >= this.stats.maxHp) return 'already at full health';
+		if (this.pickPotion() < 0) return 'no potion would help';
 		return null;
 	}
 
-	// Drink the oldest potion in the bag.
+	// Drink that potion.
 	quaff() {
-		const potion = this.bag.shift();
+		const potion = this.bag.splice(this.pickPotion(), 1)[0];
+		++this.counts.potionsDrunk;
+		if (potion.sp) {
+			const restored = Math.min(this.stats.maxSp - this.sp, Math.ceil(this.stats.maxSp * potion.sp));
+			this.sp += restored;
+			this.emit({ type: 'potion', restored });
+			return;
+		}
 		const healed = Math.min(this.stats.maxHp - this.hp, Math.ceil(this.stats.maxHp * potion.heal));
 		this.hp += healed;
-		++this.counts.potionsDrunk;
 		this.emit({ type: 'potion', healed });
 	}
 

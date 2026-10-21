@@ -46,13 +46,13 @@ const MISS = [0.99];
 
 /*
 A game on a hand-made maze, with monsters and traps exactly where you say. `monsters` are
-{species, col, level}; `traps` are {kind, col}; `potions` are {col, heal}. Dice are scripted.
+{species, col, level}; `traps` are {kind, col}; `potions` are {col, heal} or {col, sp}. Dice are scripted.
 */
 function setup({ maze = corridor(12), monsters = [], traps = [], potions = [], heroOver = {}, content = DUNGEON_CONTENT } = {}) {
 	const dungeon = new Dungeon(maze, 7, content);
 	dungeon.monsters = monsters.map((m, id) => ({ id, species: m.species, cell: maze.cell(0, m.col), depth: 0, jitter: (m.level ?? 1) - 1 }));
 	dungeon.traps = traps.map(t => ({ kind: t.kind, cell: maze.cell(0, t.col) }));
-	dungeon.potions = potions.map(x => ({ cell: maze.cell(0, x.col), heal: x.heal ?? DUNGEON_CONTENT.potions.heal }));
+	dungeon.potions = potions.map(x => ({ cell: maze.cell(0, x.col), ...(x.sp ? { sp: x.sp } : { heal: x.heal ?? DUNGEON_CONTENT.potions.heal }) }));
 	const game = new DungeonGame(maze, dungeon, hero(heroOver), 'test', { events: true });
 	game.dice = scriptedDice();
 	return game;
@@ -112,8 +112,11 @@ test('monsters follow the placement rules', () => {
 		const wanted = Math.round(maze.cellList.length / DUNGEON_CONTENT.cellsPerMonster);
 		assert.ok(dungeon.monsters.length >= Math.min(wanted, 1) && dungeon.monsters.length <= wanted + 2, `${dungeon.monsters.length} monsters for ${maze.cellList.length} cells`);
 		for (const t of dungeon.traps) assert.ok(dungeon.dist.get(t.cell) > 3 && !dungeon.entranceSet.has(t.cell));
-		assert.strictEqual(dungeon.potions.length, Math.round(maze.cellList.length / DUNGEON_CONTENT.potions.cellsPerPotion));
-		for (const x of dungeon.potions) assert.ok(dungeon.dist.get(x.cell) > 3 && !dungeon.entranceSet.has(x.cell) && x.heal > 0 && x.heal <= 1);
+		const hpPotions = dungeon.potions.filter(x => x.heal), spPotions = dungeon.potions.filter(x => x.sp);
+		assert.strictEqual(hpPotions.length, Math.round(maze.cellList.length / DUNGEON_CONTENT.potions.cellsPerPotion));
+		assert.strictEqual(spPotions.length, Math.round(maze.cellList.length / DUNGEON_CONTENT.potions.cellsPerSpPotion));
+		assert.strictEqual(new Set(dungeon.potions.map(x => x.cell)).size, dungeon.potions.length, 'one potion per cell');
+		for (const x of dungeon.potions) assert.ok(dungeon.dist.get(x.cell) > 3 && !dungeon.entranceSet.has(x.cell) && (x.heal ?? x.sp) > 0 && (x.heal ?? x.sp) <= 1);
 	}
 });
 
@@ -556,7 +559,7 @@ test('potions are picked up by walking onto them, and I drinks the oldest', () =
 	assert.strictEqual(game.bag.length, 1);
 	assert.strictEqual(game.counts.potionsFound, 1);
 	assert.ok(game.events.some(e => e.type == 'potion-found'));
-	assert.strictEqual(game.act('I').reason, 'already at full health');
+	assert.strictEqual(game.act('I').reason, 'no potion would help');
 	game.hp = 10;
 	const ticks = game.ticks;
 	run(game, 'I');
@@ -577,8 +580,8 @@ test('shop potions come with the hero and are weaker; the bag holds eight', () =
 	run(full, 'F');
 	assert.strictEqual(full.bag.length, 8, 'no room: the potion stays on the floor');
 	assert.strictEqual(full.potionAt.size, 1);
-	assert.throws(() => setup({ heroOver: { potions: Array(9).fill(0.25) } }), /heal shares/);
-	assert.throws(() => setup({ heroOver: { potions: [2] } }), /heal shares/);
+	assert.throws(() => setup({ heroOver: { potions: Array(9).fill(0.25) } }), /shares/);
+	assert.throws(() => setup({ heroOver: { potions: [2] } }), /shares/);
 });
 
 test('drinking in a fight takes the round: the monster still swings', () => {
@@ -713,4 +716,53 @@ test('potions and skills replay: the same letters give the same run', () => {
 			assert.strictEqual(again.ticks, live.ticks);
 		}
 	}
+});
+
+
+test('SP potions restore a share of max SP, and I picks the potion that helps', () => {
+	const game = setup({ content: pinned(), potions: [{ col: 1, sp: 0.5 }, { col: 2 }], heroOver: { cls: 'mage' } });
+	run(game, 'FF');
+	assert.strictEqual(game.bag.length, 2);
+	assert.strictEqual(game.act('I').reason, 'no potion would help', 'full HP and full SP');
+	game.sp = 4;
+	const ticks = game.ticks;
+	run(game, 'I');
+	assert.strictEqual(game.sp, 4 + 16, 'half of 32 SP');
+	assert.strictEqual(game.ticks, ticks + 1);
+	assert.strictEqual(game.bag.length, 1, 'the HP potion stays in the bag');
+	game.hp = 5;
+	game.sp = 10;
+	run(game, 'I');
+	assert.ok(game.hp > 5 && game.sp == 10, 'now the HP potion is the one that helps');
+	assert.strictEqual(game.bag.length, 0);
+});
+
+test('with both kinds in the bag, I skips an SP potion when only HP is low', () => {
+	const game = setup({ content: pinned(), heroOver: { cls: 'mage', potions: [{ sp: 0.25 }, 0.25] } });
+	game.hp = 10;
+	run(game, 'I');
+	assert.strictEqual(game.hp, 14, 'the HP potion (25% of 16) was drunk, not the older SP one');
+	assert.strictEqual(game.bag.length, 1);
+	assert.strictEqual(game.bag[0].sp, 0.25, 'the older SP potion is still in the bag');
+	assert.throws(() => setup({ heroOver: { potions: [{ sp: 2 }] } }), /shares/);
+	assert.throws(() => setup({ heroOver: { potions: [{ heal: 0.5 }] } }), /shares/);
+});
+
+test('SP potions share the eight-slot bag with HP potions', () => {
+	const game = setup({ content: pinned(), potions: [{ col: 1, sp: 0.5 }], heroOver: { potions: Array(8).fill(0.25) } });
+	run(game, 'F');
+	assert.strictEqual(game.bag.length, 8);
+	assert.strictEqual(game.potionAt.size, 1, 'no room, so it stays on the floor');
+});
+
+test('a Mage can drink SP potions mid-fight to keep casting Firebolt', () => {
+	const game = setup({ content: pinned(), monsters: [{ species: 'orc', col: 1 }], heroOver: { cls: 'mage', potions: [{ sp: 0.5 }] } });
+	run(game, 'F');
+	game.sp = 0;
+	assert.strictEqual(game.act('1').reason, 'not enough SP for Firebolt');
+	run(game, 'I');
+	assert.strictEqual(game.sp, 16);
+	game.dice.queue.push(0.5);
+	run(game, '1');
+	assert.strictEqual(game.monsters[0].hp, 28 - 9);
 });

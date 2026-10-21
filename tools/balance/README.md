@@ -139,3 +139,25 @@ levels now count (+30%). Level 1 / 10 / 20 SP: Warrior 16 / 26 / 38, Rogue and R
 Mage 42 / 70 / 102, Cleric 31 / 53 / 77. Easy deaths (all classes, levels 1 / 5 / 12, traps on) stay
 at about 53%, so the stand-in's deaths are not SP-limited outside the Mage. Promoted abilities will
 cost more SP to partly offset this (Mike); there are none yet.
+
+## SP potions (Mike, 2026-10-21)
+
+A second potion kind that restores a share of max SP, found in the maze (one per 40 cells, 50%) and in
+the shop (25%, arriving in `hero.potions` as `{sp: 0.25}`), in the same 8-slot bag. Sized by
+`node sp-potions.js`: for a Mage to Firebolt every monster to death it needs about 50-60 casts a maze
+(63 at level 1 on Easy), and its own tank covers 10 to 25 of them, so the potions fill the rest:
+
+| | level 1 | 3 | 5 | 8 | 12 | 20 |
+|---|---|---|---|---|---|---|
+| potions needed, Easy | 10.0 | 6.8 | 6.7 | 4.6 | 3.2 | 2.0 |
+| potions needed, Average | 14.5 | 9.4 | 8.3 | 5.5 | 3.9 | 2.4 |
+| potions needed, Hard | 17.4 | 11.6 | 11.3 | 6.7 | 5.1 | 2.6 |
+
+The maze has about 9.4 (one per 40 cells), so a Mage that finds them all can burn the whole Easy maze
+from level 2 up, and falls short at level 1 and on Hard. The need falls with level because SP grows
+10% a level while the casts needed stay put.
+
+The stand-in cannot show their value: it only walks the exit route, fights about 10 monsters and
+needs about 10 casts, which its own tank covers (it drank 0.1 of them a run). What it does show is the
+slot cost: starting with a full bag of 8 SP potions leaves no room for HP potions and doubles Easy
+deaths (28% to 56% at level 1), so the shared bag matters.
