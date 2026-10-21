@@ -139,6 +139,56 @@ test('a cancelled touch lets go of the touch button', async () => {
 	await page.close();
 });
 
+/*
+The touch buttons turn themselves on where the device has a touch screen, whichever way
+an iPad is held (they used to depend on the window's shape, and sideways they were invisible
+but still caught every tap). A page can force them on or off; the site's Settings does.
+*/
+const iPadSizes = { landscape: { width: 1180, height: 820 }, portrait: { width: 820, height: 1180 } };
+// Playwright counts a see-through element as visible, so check the opacity too.
+const touchShown = async page => await page.locator('#touchNav').isVisible()
+	&& await page.evaluate(() => getComputedStyle(document.getElementById('touchNav')).opacity == '1');
+const pointId = (page, x, y) => page.evaluate(([x, y]) => document.elementFromPoint(x, y).id, [x, y]);
+
+for (const [way, viewport] of Object.entries(iPadSizes)) {
+	test(`a touch screen gets the touch buttons automatically (${way})`, async () => {
+		const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true, viewport });
+		assert.ok(await touchShown(page), 'the buttons show');
+		assert.ok((await pointId(page, viewport.width / 2, viewport.height * 0.4)).startsWith('touch'), 'a tap lands on a button');
+		await page.close();
+	});
+}
+
+test('a device without a touch screen gets no touch buttons, and the maze takes the pointer', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { viewport: iPadSizes.portrait });
+	assert.ok(!await touchShown(page), 'the buttons are gone');
+	assert.ok(!(await pointId(page, 410, 470)).startsWith('touch'), 'nothing invisible sits over the maze');
+	await page.close();
+});
+
+test('the touch buttons can be forced off or on', async () => {
+	const touch = await openDemo('', gameScript(1, 5, 4), { hasTouch: true });
+	await touch.page.evaluate(() => game.mazehtml.setTouchControls('off'));
+	assert.ok(!await touchShown(touch.page), 'off hides them on a touch screen');
+	await touch.page.evaluate(() => game.mazehtml.setTouchControls('auto'));
+	assert.ok(await touchShown(touch.page), 'auto brings them back');
+	await touch.page.close();
+	const plain = await openDemo('', gameScript(1, 5, 4));
+	await plain.page.evaluate(() => game.mazehtml.setTouchControls('on'));
+	assert.ok(await touchShown(plain.page), 'on shows them without a touch screen');
+	await plain.page.close();
+});
+
+test('Hide takes the touch buttons off the maze and Show brings them back', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true, viewport: iPadSizes.landscape });
+	await page.locator('#touchHide').tap();
+	assert.ok(!await touchShown(page), 'the buttons are gone');
+	assert.ok(!(await pointId(page, 590, 330)).startsWith('touchFwd'), 'they no longer catch touches');
+	await page.locator('#touchShow').tap();
+	assert.ok(await touchShown(page), 'the buttons are back');
+	await page.close();
+});
+
 test('the game can clear itself away when no menu callback was given', async () => {
 	const { page, errors } = await openDemo('', gameScript(1, 5, 11));
 	await page.evaluate(() => game.mazehtml.removeGameUi({state: 'win'}));

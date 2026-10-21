@@ -162,6 +162,9 @@ class MazeHtml{
 		// Prefix for the images this file loads itself (the map's player marker), relative to the page.
 		// The site serves img/ next to its pages; a page elsewhere sets this, e.g. '../ui/'.
 		this.assetRoot = '';
+		// Whether the on-screen touch buttons show: 'auto' (on a device with a touch screen),
+		// 'on' or 'off'. A page that offers a setting for it calls setTouchControls().
+		this.touchControls = 'auto';
 		// This engine needs a script tag in the root html page.
 		// Find it. Assert if it can't be found.
 		this.styleSheet =  [...document.styleSheets].filter((x)=>x.href==null).pop();
@@ -583,6 +586,14 @@ class MazeHtml{
 		*/
 	}
 	
+	// Show or hide the touch buttons: 'auto' shows them where the device has a touch screen
+	// (iPads included, whatever orientation they are held in), 'on' always, 'off' never.
+	setTouchControls(mode) {
+		this.touchControls = mode;
+		const show = mode == 'on' || (mode != 'off' && navigator.maxTouchPoints > 0);
+		$('#maze').toggleClass('touchOn', show);
+	}
+
 	generateGameUi(rootNodeId, helpFxn = null) {
 		this.rootNode = $(`#${rootNodeId}`);
 		const gameUi = $(`
@@ -631,6 +642,7 @@ PgDn Descend<br />
 </div>-->
 `
 		this.rootNode.append(gameUi);
+		this.setTouchControls(this.touchControls);
 		this.mapHtml = this.generateMapHtml();
 		if (helpFxn) {
 			this.helpFxn = helpFxn;
@@ -1112,11 +1124,9 @@ PgDn Descend<br />
 				event.preventDefault();
 			}
 			if (id == 'touchHide') {
-				const touchNav = $('#touchNav');		
-				var opacity = touchNav.css('opacity');
-				opacity = opacity != '1' ? '1' : '0';
-				touchNav.css('opacity', opacity);
-				$('#touchShow').remove();
+				// Hide takes the buttons away completely, so touches reach nothing underneath
+				// by mistake; the faint Show label brings them back.
+				$('#maze').addClass('touchHidden');
 				return;
 			}
 			keyPressed[map[id]] = true;
@@ -1145,6 +1155,14 @@ PgDn Descend<br />
 				delete keyPressed[map[id]];
 			}
 			eventQueue.push('keyup');
+		});
+
+		$('#touchShow').on(mousedown, function (event) {
+			event.stopImmediatePropagation();
+			if (event.type == 'touchstart') {
+				event.preventDefault();
+			}
+			$('#maze').removeClass('touchHidden');
 		});
 
 		this.rootNode.on('cut copy', function(e) {
