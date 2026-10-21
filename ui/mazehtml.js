@@ -793,6 +793,23 @@ PgDn Descend<br />
 		const startTime = Date.now();
 		const eventQueue = [];
 		const keyPressed = {};
+		// The game looks at the buttons ten times a second. A touch button tapped and let go
+		// between two looks was never seen as held and the tap was lost, so a quick tap is
+		// remembered here until the next look.
+		let tappedKey = null;
+		function nextKey() {
+			const held = Object.keys(keyPressed);
+			if (held.length == 1) {
+				tappedKey = null;
+				return held[0];
+			}
+			if (held.length == 0 && tappedKey) {
+				const key = tappedKey;
+				tappedKey = null;
+				return key;
+			}
+			return null;
+		}
 		var gameLoopThread = null;
 		var gameOver = null;
 		// An instance variable for checking outside of the object.
@@ -840,9 +857,9 @@ PgDn Descend<br />
 				mayProcessAction = processEndAnimation();
 			}
 			if (mayProcessAction) {
-				const keys = Object.keys(keyPressed);
-				if (keys.length == 1) {
-					mayProcessAction = processKeyPress(keys[0]);
+				const key = nextKey();
+				if (key) {
+					mayProcessAction = processKeyPress(key);
 				}
 			}
 		}
@@ -1049,10 +1066,10 @@ PgDn Descend<br />
 					playSound(localThis.getClip('pickup'));
 				}		
 				// Now process keypresses. 
-				const keys = Object.keys(keyPressed);
-				if (keys.length == 1) {
+				const key = nextKey();
+				if (key) {
 					// Process the remianing key.
-					processKeyPress(keys[0]);
+					processKeyPress(key);
 				}				
 			}
 			return !animationState;
@@ -1130,6 +1147,7 @@ PgDn Descend<br />
 				return;
 			}
 			keyPressed[map[id]] = true;
+			tappedKey = map[id];
 			eventQueue.push('keydown');
 		}).on(mouseup, function (event){
 			const map = {
@@ -1153,6 +1171,10 @@ PgDn Descend<br />
 			}
 			if (map[id] && keyPressed[map[id]]) {
 				delete keyPressed[map[id]];
+			}
+			// A cancelled touch was not a tap.
+			if (event.type == 'touchcancel' && tappedKey == map[id]) {
+				tappedKey = null;
 			}
 			eventQueue.push('keyup');
 		});

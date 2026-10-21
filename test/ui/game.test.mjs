@@ -189,6 +189,49 @@ test('Hide takes the touch buttons off the maze and Show brings them back', asyn
 	await page.close();
 });
 
+/*
+A quick tap on a touch button can start and end between two of the game's ten-times-a-second
+looks at the buttons. It used to be lost, which felt like the screen ignoring light taps.
+*/
+const movesNow = async page => Number((await page.locator('#moves').textContent()).match(/\d+/)[0]);
+
+test('a tap on a touch button that ends before the next look still counts once', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true });
+	const before = await movesNow(page);
+	// Press and let go inside one browser turn, so the game never sees the button held.
+	await page.evaluate(() => {
+		const target = document.getElementById('touchRight');
+		const box = target.getBoundingClientRect();
+		const point = new Touch({ identifier: 1, target, clientX: box.left + 5, clientY: box.top + 5 });
+		target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true,
+			touches: [point], targetTouches: [point], changedTouches: [point] }));
+		target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true,
+			touches: [], targetTouches: [], changedTouches: [point] }));
+	});
+	await page.waitForFunction(n => Number(document.querySelector('#moves').textContent.match(/\d+/)[0]) > n, before);
+	// One tap is one turn: wait out the turn and check nothing more happens.
+	await page.waitForTimeout(2500);
+	assert.strictEqual(await movesNow(page), before + 1, 'exactly one turn');
+	await page.close();
+});
+
+test('a cancelled touch is not counted as a tap', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true });
+	const before = await movesNow(page);
+	await page.evaluate(() => {
+		const target = document.getElementById('touchRight');
+		const box = target.getBoundingClientRect();
+		const point = new Touch({ identifier: 1, target, clientX: box.left + 5, clientY: box.top + 5 });
+		target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true,
+			touches: [point], targetTouches: [point], changedTouches: [point] }));
+		target.dispatchEvent(new TouchEvent('touchcancel', { bubbles: true, cancelable: true,
+			touches: [], targetTouches: [], changedTouches: [point] }));
+	});
+	await page.waitForTimeout(2500);
+	assert.strictEqual(await movesNow(page), before, 'no turn');
+	await page.close();
+});
+
 test('the game can clear itself away when no menu callback was given', async () => {
 	const { page, errors } = await openDemo('', gameScript(1, 5, 11));
 	await page.evaluate(() => game.mazehtml.removeGameUi({state: 'win'}));
