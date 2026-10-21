@@ -188,3 +188,11 @@ Mage, 10 days x 6 nonces, stand-in bot (an upper bound on deaths; a person plays
 
 Findings: SP is not the limit (200 SP only raises casts 26 to 31). HP is, and about 22 traps hold roughly
 2.2 max HP of damage in total, so a full sweep cannot be survived without relief.
+
+### Starting HP and trap damage (Mike, 2026-10-21)
+
+Level 1 HP including the 10 head-start levels: Warrior 115, Monk 98, Cleric/Ranger 93, Rogue 85, Mage 75
+(base HP 46/39/37/37/34/30; range 40, Mage in 70-80, Warrior over 100). Traps cut to spikes 5%, darts 3%
+of max HP ("an inconvenience, not a game killer"). Clear-and-escape on Easy, level 1, collector bot,
+10 days x 6 nonces: Cleric 68%, Mage 58%, Warrior 20%, Rogue 2%, Ranger 0%, Monk 0%. The bot melees
+for every class but the two casters, so the melee numbers are floors; class parity comes later.
