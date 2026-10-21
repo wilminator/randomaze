@@ -414,6 +414,33 @@ test('walls and floors vary within a maze, and look the same when it is reloaded
 	assert.deepStrictEqual(await looks(second.page), a);
 });
 
+test('walls and floors come in loaded pairs, and a cell never mixes them up', async () => {
+	// Three floor images, but only these pairs are allowed (the second wall goes with two floors).
+	const pairs = [['w1', 'f0'], ['w2', 'f1'], ['w2', 'f2']];
+	const script = lookScript(1, 11, 3).replace('mazehtml.generateGameUi', `
+		for (const [wall, floor] of ${JSON.stringify(pairs)}) mazehtml.loadLook({wall, floor});
+		mazehtml.generateGameUi`);
+	const { page, errors } = await openDemo('', script);
+	assert.deepStrictEqual(errors, []);
+	// For each cell, its floor tile and its wall tiles must come from one of the pairs.
+	const seen = await page.evaluate(() => {
+		const found = new Set();
+		const {maze, mazehtml} = game;
+		for (let f = 0; f < maze.floors; ++f) for (let r = 0; r < maze.rows; ++r) for (let c = 0; c < maze.columns; ++c) {
+			found.add(mazehtml.wallTile(f, r, c) + ' ' + mazehtml.floorTile(f, r, c));
+		}
+		return [...found];
+	});
+	const allowed = pairs.map(([w, f]) => `wall_${w} floor_${f}`);
+	assert.ok(seen.length > 1, 'more than one pair is used');
+	for (const look of seen) assert.ok(allowed.includes(look), look);
+	// And the cells the page drew carry the pair classes.
+	const drawn = await looks(page);
+	assert.ok(drawn.walls.includes('wall_w'));
+	assert.ok(drawn.floors.includes('floor_f'));
+	await page.close();
+});
+
 test('with no floor or ceiling images they keep their plain colour', async () => {
 	const { page, errors } = await openDemo('', lookScript(1, 11, 0));
 	assert.deepStrictEqual(errors, []);

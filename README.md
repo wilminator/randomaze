@@ -92,6 +92,23 @@ Load at least `params.doorTypes` key items: a maze never hides more keys than th
 With fewer, the UI reuses items, so two different doors can look alike. The page needs
 `ui/css/maze.css` and one inline `<style>` element, which the UI adds its rules to.
 
+## Looks (walls and floors)
+
+Each floor of the maze is cut into regions, and every cell in a region shares one look: a wall
+image paired with a floor image. Doors are the borders; a big door-free area is also cut into a few
+large regions (`mazehtml.regionSize = {target: 45, min: 12}`, in cells), so the look changes in
+places that read as separate areas and never as a small outcrop. It all follows from the maze
+and its seed, so everyone sees the same thing, and it never touches the game or replays.
+
+```js
+mazehtml.loadWall({name: 'brick', css: '...', tags: ['wall']});
+mazehtml.loadWall({name: 'flags', css: '...', tags: ['floor']});
+mazehtml.loadLook({wall: 'brick', floor: 'flags'});   // allowed pairs; a wall or floor may be in many
+```
+
+Load as many pairs as look good together; neighbouring regions avoid sharing a wall or floor.
+With no `loadLook` calls, every wall image goes with every floor image.
+
 ## Images
 
 `ui/img/` holds the only images the UI loads by itself: the ladder and the player
