@@ -505,25 +505,32 @@ test('high contrast turns walls solid and back again', async () => {
 test('high contrast gives each lock its own color and pattern, shared by door and key', async () => {
 	const { page, errors } = await openDemo('', gameScript(3, 3, 19));
 	await page.evaluate(() => game.mazehtml.setHighContrast(true));
-	const looks = await page.evaluate(() => {
+	// The maze draws only some of its doors and keys on the floor shown, so read what is there.
+	const found = await page.evaluate(() => {
 		const look = style => `${style.backgroundColor}|${style.backgroundImage}`;
-		const out = [];
-		for (const keyNumber of Object.keys(game.mazehtml.keyList).map(Number).filter(k => k > 1)) {
-			const door = document.querySelector(`.door_${keyNumber}`);
-			const key = document.querySelector(`.key_${keyNumber}`);
-			// A lock the maze never drew a door or key for has nothing to compare.
-			if (!door || !key) continue;
-			out.push({keyNumber, door: look(getComputedStyle(door)), disc: look(getComputedStyle(key, '::after'))});
+		const doors = {}, keys = {};
+		for (const door of document.querySelectorAll('.door')) {
+			doors[door.className.match(/door_(\d+)/)[1]] = look(getComputedStyle(door));
 		}
-		return out;
+		for (const key of document.querySelectorAll('.item.key')) {
+			keys[key.className.match(/key_(\d+)/)[1]] = look(getComputedStyle(key, '::after'));
+		}
+		return {doors, keys};
 	});
-	assert.ok(looks.length > 8, `the maze has many locks (${looks.length})`);
-	for (const look of looks) {
-		assert.strictEqual(look.door, look.disc, `lock ${look.keyNumber}: door and key disc match`);
-		assert.notStrictEqual(look.door.split('|')[0], 'rgba(0, 0, 0, 0)', 'the door has a color');
+	const locks = {...found.doors, ...found.keys};
+	assert.ok(Object.keys(locks).length > 3, `the maze shows several locks (${Object.keys(locks).length})`);
+	for (const lock of Object.keys(found.doors).filter(n => n in found.keys)) {
+		assert.strictEqual(found.doors[lock], found.keys[lock], `lock ${lock}: door and key disc match`);
+	}
+	for (const look of Object.values(locks)) {
+		assert.notStrictEqual(look.split('|')[0], 'rgba(0, 0, 0, 0)', 'every lock has a color');
 	}
 	// Color or pattern tells locks apart: no two locks share both.
-	assert.strictEqual(new Set(looks.map(l => l.door)).size, looks.length, 'every lock looks different');
+	assert.strictEqual(new Set(Object.values(locks)).size, Object.keys(locks).length, 'every lock looks different');
+	// The look table itself: 20 locks all differ, and the 21st reuses the first.
+	const table = await page.evaluate(() => Array.from({length: 21}, (_, i) => { const l = highContrastLook(i + 2); return `${l.color}|${l.image}`; }));
+	assert.strictEqual(new Set(table.slice(0, 20)).size, 20);
+	assert.strictEqual(table[20], table[0]);
 	assert.deepStrictEqual(errors, []);
 	await page.close();
 });
