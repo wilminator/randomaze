@@ -80,3 +80,25 @@ all six classes, traps off:
 (4 dungeons x 1 dice seed per cell, so each cell is rough, and Mage never survives: it only has ATK 4
 until its spells exist, which drags every mean up.) Without any healing, a run of 10-15 fights is
 lethal whatever the monsters do, so healing/potions are the missing piece, not more monster tuning.
+
+## Potions and level 1 skills
+
+`real.js` now plays with them: the stand-in drinks (`I`) below 40% HP in a fight or 50% outside one,
+Clerics Heal below 50-60%, Rangers shoot a monster in line, and every other class uses its skill
+(`1`) whenever it has the SP (Rogue only on a first strike). `SKILLS=0` / `POTIONS=0` switch either
+off. Easy deaths, mean of all six classes, hero levels 1 / 5 / 12, traps on, head start on:
+
+| | L1 | L5 | L12 |
+|---|---|---|---|
+| neither | 98% | 98% | 94% |
+| potions only | 71% | 69% | 48% |
+| skills only | 94% | 90% | 81% |
+| both | 67% | 71% | 40% |
+
+Easy deaths by class, both on (mean over the three levels): Warrior 29%, Rogue 50%, Ranger 46%,
+Cleric 54%, Monk 79%, Mage 96%.
+
+The stand-in only walks the shortest route to the exit, so it meets about 10 fights and finds about 2
+of the dungeon's ~10 potions. A player who explores finds far more, so these deaths are an upper
+bound. The Mage dies because it has 16 HP and 3 SP-per-Firebolt (5 casts) against 10 fights: it
+needs more SP or a cheaper cast before its numbers mean anything.

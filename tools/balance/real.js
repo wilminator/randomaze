@@ -72,8 +72,22 @@ function nextStep(game) {
 	}
 	return null;
 }
+// SKILLS=0 and POTIONS=0 switch the stand-in's use of skills (key 1) and potions (I) off.
+const USE_SKILLS = process.env.SKILLS !== '0', USE_POTIONS = process.env.POTIONS !== '0';
 function botAction(game) {
-	if (game.fight) return game.hp < game.stats.maxHp * 0.3 ? 'X' : 'A';
+	const maxHp = game.stats.maxHp, k = game.content.skills[game.hero.cls], hpShare = game.hp / maxHp;
+	const canCast = USE_SKILLS && game.sp >= k.sp;
+	if (game.fight) {
+		if (USE_POTIONS && hpShare < 0.4 && game.bag.length) return 'I';
+		if (canCast && k.kind == 'heal' && hpShare < 0.5) return '1';
+		if (hpShare < 0.3) return 'X';
+		if (canCast && k.kind == 'backstab') return game.fight.round == 0 && game.fight.firstStrike ? '1' : 'A';
+		if (canCast && k.kind != 'heal') return '1';
+		return 'A';
+	}
+	if (USE_POTIONS && hpShare < 0.5 && game.bag.length) return 'I';
+	if (canCast && k.kind == 'heal' && hpShare < 0.6) return '1';
+	if (canCast && k.kind == 'aimed-shot' && game.shotTarget(k.range)) return '1';
 	const dir = nextStep(game), p = game.player;
 	if (dir == 'U' || dir == 'D') return dir;
 	if (dir === p.dir) return 'F';
@@ -99,7 +113,7 @@ for (const cls of CLASSES) {
 	for (const L of LEVELS) {
 		result.cells[cls][L] = [];
 		for (const diff of DIFFS) {
-			let n = 0, died = 0, xp = 0, kills = 0, fights = 0, ticks = 0, monsters = 0, potentialXp = 0, floorDeaths = 0;
+			let n = 0, died = 0, xp = 0, kills = 0, fights = 0, ticks = 0, monsters = 0, potentialXp = 0, found = 0, drunk = 0, skills = 0, progress = 0;
 			for (let d = 0; d < days; ++d) {
 				const b = built[d];
 				const first = 1 + (bandOf(L, width) + diff) * width;
@@ -114,13 +128,14 @@ for (const cls of CLASSES) {
 						wasFight = !!game.fight;
 					}
 					const s = game.summary();
+					found += game.counts.potionsFound; drunk += game.counts.potionsDrunk; skills += game.counts.skills; progress += s.progress;
 					++n; if (s.outcome === 'died') ++died;
 					xp += s.xp; kills += s.kills; fights += s.stats?.fights ?? 0; ticks += s.ticks;
 					monsters += game.monsters.length;
 					potentialXp += game.monsters.reduce((a, m) => a + m.xp, 0);
 				}
 			}
-			result.cells[cls][L].push({diff, n, death: died / n, xp: xp / n, kills: kills / n, fights: fights / n, ticks: ticks / n, monsters: monsters / n, potentialXp: potentialXp / n});
+			result.cells[cls][L].push({diff, n, death: died / n, xp: xp / n, kills: kills / n, fights: fights / n, ticks: ticks / n, monsters: monsters / n, potentialXp: potentialXp / n, potionsFound: found / n, potionsDrunk: drunk / n, skills: skills / n, progress: progress / n});
 		}
 	}
 	if (!QUIET) console.log(`${cls} done (${((Date.now() - t0) / 1000).toFixed(0)} s)`);

@@ -46,12 +46,13 @@ const MISS = [0.99];
 
 /*
 A game on a hand-made maze, with monsters and traps exactly where you say. `monsters` are
-{species, col, level}; `traps` are {kind, col}. Dice are scripted.
+{species, col, level}; `traps` are {kind, col}; `potions` are {col, heal}. Dice are scripted.
 */
-function setup({ maze = corridor(12), monsters = [], traps = [], heroOver = {}, content = DUNGEON_CONTENT } = {}) {
+function setup({ maze = corridor(12), monsters = [], traps = [], potions = [], heroOver = {}, content = DUNGEON_CONTENT } = {}) {
 	const dungeon = new Dungeon(maze, 7, content);
 	dungeon.monsters = monsters.map((m, id) => ({ id, species: m.species, cell: maze.cell(0, m.col), depth: 0, jitter: (m.level ?? 1) - 1 }));
 	dungeon.traps = traps.map(t => ({ kind: t.kind, cell: maze.cell(0, t.col) }));
+	dungeon.potions = potions.map(x => ({ cell: maze.cell(0, x.col), heal: x.heal ?? DUNGEON_CONTENT.potions.heal }));
 	const game = new DungeonGame(maze, dungeon, hero(heroOver), 'test', { events: true });
 	game.dice = scriptedDice();
 	return game;
@@ -111,6 +112,8 @@ test('monsters follow the placement rules', () => {
 		const wanted = Math.round(maze.cellList.length / DUNGEON_CONTENT.cellsPerMonster);
 		assert.ok(dungeon.monsters.length >= Math.min(wanted, 1) && dungeon.monsters.length <= wanted + 2, `${dungeon.monsters.length} monsters for ${maze.cellList.length} cells`);
 		for (const t of dungeon.traps) assert.ok(dungeon.dist.get(t.cell) > 3 && !dungeon.entranceSet.has(t.cell));
+		assert.strictEqual(dungeon.potions.length, Math.round(maze.cellList.length / DUNGEON_CONTENT.potions.cellsPerPotion));
+		for (const x of dungeon.potions) assert.ok(dungeon.dist.get(x.cell) > 3 && !dungeon.entranceSet.has(x.cell) && x.heal > 0 && x.heal <= 1);
 	}
 });
 
@@ -447,7 +450,7 @@ test('replayDungeon accepts a real run and reports why it refuses a bad one', ()
 	assert.strictEqual(bad('FFF'), 'the run never ended');
 	assert.strictEqual(bad('F'.repeat(12) + 'F'), 'actions continue after the run ended at 12');
 	assert.strictEqual(bad('B'), 'action 0 (B): does nothing');
-	assert.strictEqual(bad('F1'), 'action 1 (1): skills and items are not available yet');
+	assert.strictEqual(bad('F2'), 'action 1 (2): that skill is not available yet');
 	assert.strictEqual(bad('Z'), 'action 0 (Z): Z is not an action');
 	assert.strictEqual(bad('T'), 'action 0 (T): T is not an action');
 	assert.strictEqual(bad('C'), 'action 0 (C): does nothing');
@@ -458,7 +461,7 @@ test('in a fight only fight actions work', () => {
 	run(game, 'F');
 	assert.strictEqual(game.act('F').reason, 'you are in a fight');
 	assert.strictEqual(game.act('W').reason, 'you are in a fight');
-	assert.strictEqual(game.act('2').reason, 'skills and items are not available yet');
+	assert.strictEqual(game.act('2').reason, 'that skill is not available yet');
 });
 
 // A stand-in for a player: walk the shortest route to the exit, fight what gets in the way.
@@ -542,4 +545,155 @@ test('a long run is cheap to replay', () => {
 	for (let i = 0; i < 20; ++i) replayDungeon(built.maze, built.dungeon, h, 'speed', game.actions);
 	const ms = Number(process.hrtime.bigint() - t) / 1e6 / 20;
 	assert.ok(ms < 100, `${ms.toFixed(1)} ms per replay of ${game.actions.length} actions`);
+});
+
+
+// ---------------------------------------------------------------- potions
+
+test('potions are picked up by walking onto them, and I drinks the oldest', () => {
+	const game = setup({ content: pinned(), potions: [{ col: 2 }] });
+	run(game, 'FF');
+	assert.strictEqual(game.bag.length, 1);
+	assert.strictEqual(game.counts.potionsFound, 1);
+	assert.ok(game.events.some(e => e.type == 'potion-found'));
+	assert.strictEqual(game.act('I').reason, 'already at full health');
+	game.hp = 10;
+	const ticks = game.ticks;
+	run(game, 'I');
+	assert.strictEqual(game.hp, 25, 'a found potion heals half of max HP (15 of 30)');
+	assert.strictEqual(game.ticks, ticks + 1, 'drinking outside a fight costs a tick');
+	assert.strictEqual(game.bag.length, 0);
+	assert.strictEqual(game.act('I').reason, 'no potion to drink');
+	game.hp = 10;
+	assert.strictEqual(game.act('I').reason, 'no potion to drink');
+});
+
+test('shop potions come with the hero and are weaker; the bag holds eight', () => {
+	const game = setup({ content: pinned(), heroOver: { potions: [0.25] } });
+	game.hp = 10;
+	run(game, 'I');
+	assert.strictEqual(game.hp, 18, 'a shop potion heals 25% of 30, rounded up to 8');
+	const full = setup({ content: pinned(), potions: [{ col: 1 }], heroOver: { potions: Array(8).fill(0.25) } });
+	run(full, 'F');
+	assert.strictEqual(full.bag.length, 8, 'no room: the potion stays on the floor');
+	assert.strictEqual(full.potionAt.size, 1);
+	assert.throws(() => setup({ heroOver: { potions: Array(9).fill(0.25) } }), /heal shares/);
+	assert.throws(() => setup({ heroOver: { potions: [2] } }), /heal shares/);
+});
+
+test('drinking in a fight takes the round: the monster still swings', () => {
+	const game = setup({ content: pinned(), monsters: [{ species: 'orc', col: 1 }], heroOver: { potions: [0.5] } });
+	run(game, 'F');                                // first strike
+	game.hp = 5;
+	game.dice.queue.push(0, 0.5, 0.99);            // after the potion the orc hits: 8 x 1.0 - 2.5 = 5.5 -> 6
+	run(game, 'I');
+	assert.strictEqual(game.hp, 5 + 15 - 6);
+	assert.ok(game.fight, 'still fighting');
+});
+
+// ---------------------------------------------------------------- level 1 skills
+
+const orcFight = (cls) => {
+	const game = setup({ content: pinned(), monsters: [{ species: 'orc', col: 1 }], heroOver: { cls } });
+	run(game, 'F');                                // walks into the orc: first strike for the hero
+	return game;
+};
+
+test('Warrior: Power Strike hits for 1.8x and costs 2 SP', () => {
+	const game = orcFight('warrior');
+	game.dice.queue.push(...HIT);                  // 7 x 0.85 - 4/2 = 3.95; x 1.8 = 7.1 -> 7
+	run(game, '1');
+	assert.strictEqual(game.monsters[0].hp, 28 - 7);
+	assert.strictEqual(game.sp, 4);
+	game.sp = 1;
+	assert.strictEqual(game.act('1').reason, 'not enough SP for Power Strike');
+});
+
+test('Rogue: Backstab is 3x, and only on a first strike', () => {
+	const game = orcFight('rogue');
+	game.dice.queue.push(...HIT);                  // 6 x 0.85 - 2 = 3.1; x 3 = 9.3 -> 9
+	run(game, '1');
+	assert.strictEqual(game.monsters[0].hp, 28 - 9);
+	assert.strictEqual(game.act('1').reason, 'Backstab needs a first strike', 'the second round is no first strike');
+});
+
+test('Mage: Firebolt ignores DEF and needs no to-hit roll', () => {
+	const game = orcFight('mage');
+	game.dice.queue.push(0.5);                     // spell 9 x 1.0 = 9, whatever the orc\'s DEF
+	run(game, '1');
+	assert.strictEqual(game.monsters[0].hp, 28 - 9);
+	assert.strictEqual(game.sp, 13);
+});
+
+test('Cleric: Heal restores 40% of max HP, in a fight or out of one', () => {
+	const game = setup({ content: pinned(), monsters: [{ species: 'orc', col: 3 }], heroOver: { cls: 'cleric' } });
+	assert.strictEqual(game.act('1').reason, 'already at full health');
+	game.hp = 5;
+	const ticks = game.ticks;
+	run(game, '1');
+	assert.strictEqual(game.hp, 5 + 10, '40% of 24 rounds up to 10');
+	assert.strictEqual(game.ticks, ticks + 1);
+	assert.strictEqual(game.sp, 8);
+	const fight = orcFight('cleric');
+	fight.hp = 5;
+	run(fight, '1');                               // heals to 15; the orc then misses (default dice)
+	assert.strictEqual(fight.hp, 15);
+	assert.ok(fight.fight);
+});
+
+test('Ranger: Aimed Shot hits a monster in line before it reaches you', () => {
+	const game = setup({ content: blind(), monsters: [{ species: 'rat', col: 4 }], heroOver: { cls: 'ranger' } });
+	game.dice.queue.push(...HIT);                  // 6 x 0.85 = 5.1; x 1.5 = 7.65 -> 8, the rat has 6
+	const ticks = game.ticks;
+	run(game, '1');
+	assert.strictEqual(game.kills, 1);
+	assert.strictEqual(game.sp, 8);
+	assert.strictEqual(game.ticks, ticks + 1);
+	assert.strictEqual(game.act('1').reason, 'nothing in line to shoot');
+	const far = setup({ content: blind(), monsters: [{ species: 'rat', col: 9 }], heroOver: { cls: 'ranger' } });
+	assert.strictEqual(far.act('1').reason, 'nothing in line to shoot', 'out of range (6 cells)');
+});
+
+test('Ranger: a monster that survives the shot comes for the hero', () => {
+	const game = setup({ content: blind(), monsters: [{ species: 'orc', col: 4 }], heroOver: { cls: 'ranger' } });
+	game.dice.queue.push(...HIT);
+	run(game, '1');
+	assert.strictEqual(game.monsters[0].state, 'chase');
+	assert.ok(game.monsters[0].hp < 28);
+});
+
+test('Monk: Flurry is three hits at half damage', () => {
+	const game = orcFight('monk');
+	game.dice.queue.push(...HIT, ...HIT, ...HIT);  // 5 x 0.85 - 2 = 2.25; x 0.5 = 1.1 -> 1 each
+	run(game, '1');
+	assert.strictEqual(game.monsters[0].hp, 28 - 3);
+	assert.strictEqual(game.counts.hits, 3);
+	assert.strictEqual(game.sp, 7);
+});
+
+test('skills used out of turn are refused and change nothing', () => {
+	const game = setup({ content: pinned() });
+	const reason = game.act('1').reason;
+	assert.strictEqual(reason, 'Power Strike is used in a fight');
+	assert.strictEqual(game.sp, 6);
+	assert.strictEqual(game.actions, '');
+});
+
+test('potions and skills replay: the same letters give the same run', () => {
+	for (const cls of ['warrior', 'rogue', 'mage', 'cleric', 'ranger', 'monk']) {
+		const { maze, dungeon } = buildDungeon(202601018);
+		const live = new DungeonGame(maze, dungeon, hero({ cls, potions: [0.25] }), 'n', {});
+		for (let i = 0; i < 600 && !live.outcome; ++i) {
+			const wanted = live.fight ? (live.hp < live.stats.maxHp * 0.5 ? 'I' : i % 2 ? '1' : 'A') : (i % 15 == 0 ? '1' : botAction(live));
+			if (!live.act(wanted).ok) live.act(live.fight ? 'A' : botAction(live));
+		}
+		assert.ok(live.counts.skills > 0 || live.outcome, `${cls} used a skill or finished`);
+		if (live.outcome) {
+			const again = replayDungeon(maze, dungeon, hero({ cls, potions: [0.25] }), 'n', live.actions);
+			assert.strictEqual(again.valid, true, cls + ': ' + again.reason);
+			assert.strictEqual(again.xp, live.xp);
+			assert.strictEqual(again.hp, live.hp);
+			assert.strictEqual(again.ticks, live.ticks);
+		}
+	}
 });
