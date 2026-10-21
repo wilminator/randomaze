@@ -131,3 +131,11 @@ All SP values are doubled for finer tuning: class SP (Warrior 12, Rogue 20, Mage
 Ranger 20, Monk 20), skill costs (Power Strike 4, Backstab 4, Firebolt 4, Heal 8, Aimed Shot 4,
 Flurry 6), walking regen (1 SP per 4 steps) and Guard's gain (2). The ratios are unchanged, so the
 results above still stand; the SP-potion and "SP unlimited" experiments used the old, halved numbers.
+
+## SP grows with level (Mike, 2026-10-21)
+
+`heroGrowth.sp` is now 0.10: +10% of base SP per level, like HP and ATK use 15%. The head start's 3 SP
+levels now count (+30%). Level 1 / 10 / 20 SP: Warrior 16 / 26 / 38, Rogue and Ranger and Monk 26 / 44 / 64,
+Mage 42 / 70 / 102, Cleric 31 / 53 / 77. Easy deaths (all classes, levels 1 / 5 / 12, traps on) stay
+at about 53%, so the stand-in's deaths are not SP-limited outside the Mage. Promoted abilities will
+cost more SP to partly offset this (Mike); there are none yet.

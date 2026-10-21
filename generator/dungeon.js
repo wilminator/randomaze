@@ -37,8 +37,9 @@ const DUNGEON_CONTENT = {
 	maxLevel: 20,
 
 	// A hero's stats at level L are the class's base x (1 + growth x (L - 1)). Design 7.3: +15% HP
-	// and ATK per level, and a full SP refill (so SP and DEF do not grow).
-	heroGrowth: { hp: 0.15, atk: 0.15, def: 0, sp: 0 },
+	// and ATK per level, plus +10% SP per level (Mike, 2026-10-21) and a full SP refill on a level-up.
+	// DEF does not grow.
+	heroGrowth: { hp: 0.15, atk: 0.15, def: 0, sp: 0.10 },
 	// Levels of HP and SP growth a hero starts with, on top of its own level (a cushion for the early levels).
 	headStart: { hp: 10, sp: 3 },
 	// Monsters follow the same curve (design 3.6), and their XP grows by this factor per level.
