@@ -363,3 +363,45 @@ test('every lock gets a different door look while there are looks left', async (
 	assert.ok(colours.length >= 3, 'the maze has at least three locks');
 	assert.strictEqual(new Set(colours.slice(0, 3)).size, 3, 'the first three locks use the three door looks');
 });
+
+/*
+Slow motion. The animations get longer by 1 / speed, speed never goes above 1 (the server counts
+moves quicker than the usual animations as impossible), and the default pace does not change.
+*/
+const durations = page => page.evaluate(() => ['#mazeRotate', '#mazeTranslate'].map(id =>
+	getComputedStyle(document.querySelector(id)).transitionDuration));
+
+test('animation speed stretches the animations, and the default pace is unchanged', async () => {
+	const { page, errors } = await openDemo('', gameScript(1, 5, 11));
+	assert.deepStrictEqual(await durations(page), ['0.5s', '0.5s'], 'normal pace before any setting');
+
+	await page.evaluate(() => game.mazehtml.setAnimationSpeed(0.5));
+	assert.deepStrictEqual(await durations(page), ['1s', '1s'], 'half speed takes twice as long');
+	// Time a real turn: at normal pace it takes about 500 ms, at half speed about 1000 ms.
+	const timeTurn = async () => {
+		const start = Date.now();
+		await page.keyboard.down('ArrowLeft');
+		await page.waitForFunction(() => game.mazehtml.isBusy(), null, {polling: 10});
+		await page.keyboard.up('ArrowLeft');
+		await page.waitForFunction(() => !game.mazehtml.isBusy(), null, {polling: 10});
+		return Date.now() - start;
+	};
+	assert.ok(await timeTurn() >= 900, 'a turn at half speed lasts about a second');
+
+	await page.evaluate(() => game.mazehtml.setAnimationSpeed(1));
+	assert.deepStrictEqual(await durations(page), ['0.5s', '0.5s'], 'back to normal');
+	assert.ok(await timeTurn() < 800, 'a turn at normal speed is quicker');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('animation speed is kept between a quarter and normal pace, and junk means normal', async () => {
+	const { page } = await openDemo('', gameScript(1, 5, 11));
+	const factor = async speed => page.evaluate(s => { game.mazehtml.setAnimationSpeed(s); return game.mazehtml.slowFactor; }, speed);
+	assert.strictEqual(await factor(0.25), 4);
+	assert.strictEqual(await factor(0.01), 4, 'slower than a quarter is held at a quarter');
+	assert.strictEqual(await factor(3), 1, 'faster than normal is held at normal');
+	assert.strictEqual(await factor('abc'), 1);
+	assert.strictEqual(await factor(undefined), 1);
+	await page.close();
+});

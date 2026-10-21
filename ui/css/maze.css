@@ -30,14 +30,14 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
 	line-height: 1;
 }
 
-.mazeRotate { height:100%; width:100%; transition: transform 0.5s; transform-style: preserve-3d; position: absolute}
-.mazeTranslate { height:100%; width:100%; transition: transform 0.5s; transform-style: preserve-3d; position: absolute}
+.mazeRotate { height:100%; width:100%; transition: transform calc(0.5s * var(--maze-slow, 1)); transform-style: preserve-3d; position: absolute}
+.mazeTranslate { height:100%; width:100%; transition: transform calc(0.5s * var(--maze-slow, 1)); transform-style: preserve-3d; position: absolute}
 .mazeFloor { height:100%; width:100%; transform-style: preserve-3d; position: absolute}
 
 .offset {top: 50%; left: 50%; position: absolute; height:100vmin; width:100vmin;}
 .largeOffset {top: 50%; left: 50%; position: absolute; height:3000vmin; width:3000vmin; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 
-.tile {-webkit-backface-visibility: hidden; backface-visibility: hidden; transition: transform 1s; transform-style: preserve-3d; background-size: contain; overflow:hidden;}
+.tile {-webkit-backface-visibility: hidden; backface-visibility: hidden; transition: transform calc(1s * var(--maze-slow, 1)); transform-style: preserve-3d; background-size: contain; overflow:hidden;}
 .wall {width:101vmin;height:101vmin;top:-0.5vmin;left:-0.5vmin;/*background-image:url(../img/wall/0.png);*/}
 .opening {background-color: black; opacity: 33%; }
 .floor {background-size: contain; background-color:#e2dc89; }
@@ -46,7 +46,7 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
 .outside {transform-style: preserve-3d; overflow:hidden;}
 
 .doorwall {clip-path: polygon(0% 0%, 0% 100%, 30% 100%, 30% 30%, 70% 30%, 70% 100%, 100% 100%, 100% 0%); transform-style: preserve-3d;background-size: contain; height:100vmin; width:100vmin;}
-.door {position:absolute;width:40vmin;height:70vmin;top:30vmin;left:30vmin;z-index:-1;/*background-image:url(../img/door/0.png);*/ background-size: contain;transition: transform 1s;  backface-visibility: hidden; -webkit-backface-visibility: hidden; font:3vmin BarcadeBrawl; color:white;}
+.door {position:absolute;width:40vmin;height:70vmin;top:30vmin;left:30vmin;z-index:-1;/*background-image:url(../img/door/0.png);*/ background-size: contain;transition: transform calc(1s * var(--maze-slow, 1));  backface-visibility: hidden; -webkit-backface-visibility: hidden; font:3vmin BarcadeBrawl; color:white;}
 .doortitle {position:absolute; width: 100%;text-align: center;}
 .door::after {position:absolute; content:'';/*background-image:url(../img/inv/key/0.png);top:-100px;left:-30px;*/width:100%;height:75%;background-position:center;background-repeat:no-repeat;}
 .door_split_left {clip-path: polygon(0% 0%, 0% 100%, 31% 100%, 61% 0%);}
