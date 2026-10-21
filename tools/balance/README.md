@@ -169,3 +169,22 @@ Anchor Charm (an unseen pit does not drop you; it is revealed). 0 to 2 per maze 
 slot each, shop copies come in `hero.potions` as `'feather'` / `'hold'`. A fall costs only 10% of max
 HP, so the Anchor Charm is the one that matters: a fall is one-way and can land the hero among monsters
 on another floor. The stand-in does not use them (it never meets a pit on purpose).
+
+## Clear-the-band study (Mage, level 1, Easy)
+
+`COLLECT=1 node real.js` plays a collector: it walks to the nearest monster or item (sticking to one target), kills
+everything, picks up what fits the bag, and heads for the exit once hurt with no HP potion. New columns: `escaped`,
+`cleared` (every monster dead), `success` (escaped, cleared, 10+ XP for level 2). Goal (Mike): above 50% success.
+
+Mage, 10 days x 6 nonces, stand-in bot (an upper bound on deaths; a person plays better):
+
+| change | death | cleared + escaped |
+|---|---|---|
+| none | 62% | 2% |
+| head start HP 20 levels | 50% | 17% |
+| trap damage halved (spikes 7.5%, dart 5%) | 42% | 20% |
+| trap damage halved + head start HP 20 | 22% | 55% |
+| trap damage halved + monsters x0.8 | 12% | 62% |
+
+Findings: SP is not the limit (200 SP only raises casts 26 to 31). HP is, and about 22 traps hold roughly
+2.2 max HP of damage in total, so a full sweep cannot be survived without relief.
