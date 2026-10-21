@@ -1141,9 +1141,9 @@ PgDn Descend<br />
 				event.preventDefault();
 			}
 			if (id == 'touchHide') {
-				// Hide takes the buttons away completely, so touches reach nothing underneath
-				// by mistake; the faint Show label brings them back.
-				$('#maze').addClass('touchHidden');
+				// Hide only stops drawing the buttons: they stay live, so a tap on the maze
+				// still works. The faint Show label draws them again.
+				$('#maze').addClass('touchHidden').removeClass('touchVisible');
 				return;
 			}
 			keyPressed[map[id]] = true;
@@ -1184,7 +1184,7 @@ PgDn Descend<br />
 			if (event.type == 'touchstart') {
 				event.preventDefault();
 			}
-			$('#maze').removeClass('touchHidden');
+			$('#maze').removeClass('touchHidden').addClass('touchVisible');
 		});
 
 		this.rootNode.on('cut copy', function(e) {
