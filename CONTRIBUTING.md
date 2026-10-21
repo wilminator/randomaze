@@ -131,6 +131,9 @@ like this to the commit message, using your git name and email:
 Signed-off-by: Your Name <you@example.com>
 ```
 
+The sign-off must come from a person. An AI tool can't make the promises in the DCO, so if a tool
+made your commits, add your own sign-off before you open the pull request.
+
 Forgot? `git commit --amend -s` fixes the last commit, and `git rebase --signoff main`
 fixes every commit on your branch.
 
