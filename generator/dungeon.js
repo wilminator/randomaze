@@ -89,9 +89,12 @@ const DUNGEON_CONTENT = {
 	// Passive charms, carried in the same bag and used up when they trigger (Mike, 2026-10-21):
 	//   feather  a fall (a drop, or an unseen pit) does no damage
 	//   hold     an unseen pit does not drop you: you stand on it and it is revealed
-	// One of each per `cellsPerCharm` cells on the floor; the shop's arrive in `hero.potions` as the
-	// strings 'feather' and 'hold'.
-	charms: { feather: { name: 'Feather Charm', cellsPerCharm: 190 }, hold: { name: 'Anchor Charm', cellsPerCharm: 190 } },
+	// A maze has 0 to `floorCharms` of them on the floor in all (Mike), each kind chosen at random; the
+	// shop sells both, and its copies arrive in `hero.potions` as the strings 'feather' and 'hold'. An
+	// unused one at the exit pays gold, less than its price (the backend's rule; the run summary says how
+	// many are left).
+	charms: { feather: { name: 'Feather Charm' }, hold: { name: 'Anchor Charm' } },
+	floorCharms: 2,
 
 	// The level 1 skill of each class, used with key 1 (design 7.2). `sp` is the cost.
 	//   power-strike  a hit worth `mult` x damage            backstab   `mult` x, on a first strike only
@@ -367,11 +370,11 @@ class Dungeon {
 		const rng = new Math.seedrandom(`${this.seed}:charms`);
 		const taken = new Set(this.potions.map(x => x.cell));
 		const spots = maze.cellList.filter(c => this.dist.has(c) && this.dist.get(c) > content.minStartDistance && !this.entranceSet.has(c) && !c.data.hole && !taken.has(c));
-		for (const [kind, spec] of Object.entries(content.charms)) {
-			const count = Math.round(maze.cellList.length / spec.cellsPerCharm);
-			for (let i = 0; i < count && spots.length; ++i) {
-				this.charms.push({ cell: spots.splice(Math.floor(rng() * spots.length), 1)[0], charm: kind });
-			}
+		const kinds = Object.keys(content.charms);
+		const count = Math.floor(rng() * (content.floorCharms + 1));
+		for (let i = 0; i < count && spots.length; ++i) {
+			const cell = spots.splice(Math.floor(rng() * spots.length), 1)[0];
+			this.charms.push({ cell, charm: kinds[Math.floor(rng() * kinds.length)] });
 		}
 	}
 

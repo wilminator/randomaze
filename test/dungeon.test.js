@@ -829,15 +829,18 @@ test('charms lie on the floor, take a bag slot, and are not drunk by I', () => {
 	assert.throws(() => setup({ heroOver: { potions: ['wings'] } }), /charm name/);
 });
 
-test('charms are placed away from holes, the start and each other', () => {
-	for (let day = 1; day <= 20; ++day) {
-		const { maze, dungeon } = buildDungeon(202601000 + day);
+test('a maze has 0 to 2 floor charms, away from holes, the start and each other', () => {
+	const counts = new Set();
+	for (let day = 1; day <= 60; ++day) {
+		const { dungeon } = buildDungeon(202601000 + day);
 		const cells = new Set(dungeon.potions.map(x => x.cell));
+		assert.ok(dungeon.charms.length <= DUNGEON_CONTENT.floorCharms);
+		counts.add(dungeon.charms.length);
 		for (const c of dungeon.charms) {
+			assert.ok(c.charm in DUNGEON_CONTENT.charms);
 			assert.ok(!c.cell.data.hole && !cells.has(c.cell) && !dungeon.entranceSet.has(c.cell) && dungeon.dist.get(c.cell) > 3);
 			cells.add(c.cell);
 		}
-		const expected = Object.values(DUNGEON_CONTENT.charms).reduce((n, spec) => n + Math.round(maze.cellList.length / spec.cellsPerCharm), 0);
-		assert.strictEqual(dungeon.charms.length, expected);
 	}
+	assert.deepStrictEqual([...counts].sort(), [0, 1, 2], 'all three counts turn up over 60 days');
 });
