@@ -169,3 +169,37 @@ Anchor Charm (an unseen pit does not drop you; it is revealed). 0 to 2 per maze 
 slot each, shop copies come in `hero.potions` as `'feather'` / `'hold'`. A fall costs only 10% of max
 HP, so the Anchor Charm is the one that matters: a fall is one-way and can land the hero among monsters
 on another floor. The stand-in does not use them (it never meets a pit on purpose).
+
+## Clear-the-band study (Mage, level 1, Easy)
+
+`COLLECT=1 node real.js` plays a collector: it walks to the nearest monster or item (sticking to one target), kills
+everything, picks up what fits the bag, and heads for the exit once hurt with no HP potion. New columns: `escaped`,
+`cleared` (every monster dead), `success` (escaped, cleared, 10+ XP for level 2). Goal (Mike): above 50% success.
+
+Mage, 10 days x 6 nonces, stand-in bot (an upper bound on deaths; a person plays better):
+
+| change | death | cleared + escaped |
+|---|---|---|
+| none | 62% | 2% |
+| head start HP 20 levels | 50% | 17% |
+| trap damage halved (spikes 7.5%, dart 5%) | 42% | 20% |
+| trap damage halved + head start HP 20 | 22% | 55% |
+| trap damage halved + monsters x0.8 | 12% | 62% |
+
+Findings: SP is not the limit (200 SP only raises casts 26 to 31). HP is, and about 22 traps hold roughly
+2.2 max HP of damage in total, so a full sweep cannot be survived without relief.
+
+### Starting HP and trap damage (Mike, 2026-10-21)
+
+Level 1 HP including the 10 head-start levels: Warrior 115, Monk 98, Cleric/Ranger 93, Rogue 85, Mage 75
+(base HP 46/39/37/37/34/30; range 40, Mage in 70-80, Warrior over 100). Traps cut to spikes 5%, darts 3%
+of max HP ("an inconvenience, not a game killer"). Clear-and-escape on Easy, level 1, collector bot,
+10 days x 6 nonces: Cleric 68%, Mage 58%, Warrior 20%, Rogue 2%, Ranger 0%, Monk 0%. The bot melees
+for every class but the two casters, so the melee numbers are floors; class parity comes later.
+
+### Class attack rebalance (2026-10-21)
+
+The collector showed attack was the lever for the four melee-ish classes (a x1.5 attack took Warrior 20% to 78%).
+New plain ATK: Warrior 9 (was 7), Rogue 9 (6), Ranger 8.5 (6), Monk 9.5 (5); Mage 4 (spell 9) and Cleric 5 unchanged.
+Clear-and-escape on Easy, level 1, 12 days x 6 nonces: Cleric 65%, Ranger 64%, Warrior 61%, Rogue 56%, Mage 56%, Monk 54%.
+Open: ATK grows 15% a level for everyone, so the melee classes pull ahead of the casters at higher levels; the XP table and per-level parity need the next pass.

@@ -9,6 +9,7 @@ const DUNGEON_CONTENT = vm.runInContext('DUNGEON_CONTENT', ctx);
 const buildDungeon = vm.runInContext('buildDungeon', ctx);
 const replayInContext = vm.runInContext('replayDungeon', ctx);
 const dungeonMonsterXp = vm.runInContext('dungeonMonsterXp', ctx);
+const dungeonHeroStats = vm.runInContext('dungeonHeroStats', ctx);
 
 // Results come out of the engine's own realm; copy them so deepStrictEqual can compare them.
 const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -72,6 +73,10 @@ const RULES_STATS = {
 const pinned = () => {
 	const c = structuredClone(DUNGEON_CONTENT);
 	c.headStart = { hp: 0, sp: 0 };
+	// The tests were written against the old class HP, ATK and trap damage; the live numbers have moved.
+	for (const [cls, hp] of Object.entries({ warrior: 30, rogue: 20, mage: 16, cleric: 24, ranger: 22, monk: 22 })) c.classes[cls].hp = hp;
+	for (const [cls, atk] of Object.entries({ warrior: 7, rogue: 6, ranger: 6, monk: 5 })) c.classes[cls].atk = atk;
+	c.trapDamage = { spikes: 0.15, dart: 0.10 };
 	for (const [name, m] of Object.entries(c.monsters)) [m.hp, m.atk] = RULES_STATS[name];
 	return c;
 };
@@ -843,4 +848,10 @@ test('a maze has 0 to 2 floor charms, away from holes, the start and each other'
 		}
 	}
 	assert.deepStrictEqual([...counts].sort(), [0, 1, 2], 'all three counts turn up over 60 days');
+});
+
+test('starting HP: Mage 70-80, Warrior 115, and no more than 45 between the lowest and the highest class', () => {
+	const hp = Object.fromEntries(Object.keys(DUNGEON_CONTENT.classes).map(c => [c, dungeonHeroStats(DUNGEON_CONTENT, c, 1).maxHp]));
+	assert.deepStrictEqual(hp, { warrior: 115, rogue: 85, mage: 75, cleric: 93, ranger: 93, monk: 98 });
+	assert.ok(Math.max(...Object.values(hp)) - Math.min(...Object.values(hp)) <= 45);
 });
