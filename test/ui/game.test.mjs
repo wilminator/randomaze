@@ -140,28 +140,33 @@ test('a cancelled touch lets go of the touch button', async () => {
 });
 
 /*
-The touch buttons turn themselves on where the device has a touch screen, whichever way
-an iPad is held (they used to depend on the window's shape, and sideways they were invisible
-but still caught every tap). A page can force them on or off; the site's Settings does.
+The touch buttons turn themselves on where the device has a touch screen, whichever way an
+iPad is held. They always catch touches (so a tap on the maze works), and are drawn when the
+screen is portrait or after Show, and not after Hide. A page can force them on or off; the
+site's Settings does.
 */
 const iPadSizes = { landscape: { width: 1180, height: 820 }, portrait: { width: 820, height: 1180 } };
-// Playwright counts a see-through element as visible, so check the opacity too.
-const touchShown = async page => await page.locator('#touchNav').isVisible()
+const middle = { x: 590, y: 330 };   // inside the Forward box on the landscape size
+// Do the buttons exist (they catch touches), and are they drawn? Playwright counts a see-through
+// element as visible, so drawing is checked through the opacity.
+const touchLive = page => page.locator('#touchNav').isVisible();
+const touchDrawn = async page => await touchLive(page)
 	&& await page.evaluate(() => getComputedStyle(document.getElementById('touchNav')).opacity == '1');
 const pointId = (page, x, y) => page.evaluate(([x, y]) => document.elementFromPoint(x, y).id, [x, y]);
 
 for (const [way, viewport] of Object.entries(iPadSizes)) {
-	test(`a touch screen gets the touch buttons automatically (${way})`, async () => {
+	test(`a touch screen gets live touch buttons automatically (${way})`, async () => {
 		const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true, viewport });
-		assert.ok(await touchShown(page), 'the buttons show');
+		assert.ok(await touchLive(page), 'the buttons are there');
 		assert.ok((await pointId(page, viewport.width / 2, viewport.height * 0.4)).startsWith('touch'), 'a tap lands on a button');
+		assert.strictEqual(await touchDrawn(page), way == 'portrait', 'drawn upright, invisible sideways');
 		await page.close();
 	});
 }
 
 test('a device without a touch screen gets no touch buttons, and the maze takes the pointer', async () => {
 	const { page } = await openDemo('?type=1&seed=5', null, { viewport: iPadSizes.portrait });
-	assert.ok(!await touchShown(page), 'the buttons are gone');
+	assert.ok(!await touchLive(page), 'the buttons are gone');
 	assert.ok(!(await pointId(page, 410, 470)).startsWith('touch'), 'nothing invisible sits over the maze');
 	await page.close();
 });
@@ -169,23 +174,86 @@ test('a device without a touch screen gets no touch buttons, and the maze takes 
 test('the touch buttons can be forced off or on', async () => {
 	const touch = await openDemo('', gameScript(1, 5, 4), { hasTouch: true });
 	await touch.page.evaluate(() => game.mazehtml.setTouchControls('off'));
-	assert.ok(!await touchShown(touch.page), 'off hides them on a touch screen');
+	assert.ok(!await touchLive(touch.page), 'off removes them on a touch screen');
 	await touch.page.evaluate(() => game.mazehtml.setTouchControls('auto'));
-	assert.ok(await touchShown(touch.page), 'auto brings them back');
+	assert.ok(await touchLive(touch.page), 'auto brings them back');
 	await touch.page.close();
 	const plain = await openDemo('', gameScript(1, 5, 4));
 	await plain.page.evaluate(() => game.mazehtml.setTouchControls('on'));
-	assert.ok(await touchShown(plain.page), 'on shows them without a touch screen');
+	assert.ok(await touchLive(plain.page), 'on adds them without a touch screen');
 	await plain.page.close();
 });
 
-test('Hide takes the touch buttons off the maze and Show brings them back', async () => {
+test('Hide stops drawing the touch buttons but they still catch taps, and Show draws them again', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true, viewport: iPadSizes.portrait });
+	// Upright, this demo page puts part of the overlay off the left edge, so send the touches
+	// straight to the boxes instead of aiming at the screen.
+	const forwardCentre = () => page.evaluate(() => {
+		const box = document.getElementById('touchFwd').getBoundingClientRect();
+		return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2).id;
+	});
+	assert.ok(await touchDrawn(page), 'drawn upright');
+	await page.locator('#touchHide').dispatchEvent('touchstart');
+	assert.ok(!await touchDrawn(page), 'no longer drawn');
+	assert.ok(await touchLive(page), 'still there');
+	assert.strictEqual(await forwardCentre(), 'touchFwd', 'still catching touches');
+	await page.locator('#touchShow').dispatchEvent('touchstart');
+	assert.ok(await touchDrawn(page), 'drawn again');
+	await page.close();
+});
+
+test('sideways, the Show label draws the invisible touch buttons and Hide puts them away again', async () => {
 	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true, viewport: iPadSizes.landscape });
-	await page.locator('#touchHide').tap();
-	assert.ok(!await touchShown(page), 'the buttons are gone');
-	assert.ok(!(await pointId(page, 590, 330)).startsWith('touchFwd'), 'they no longer catch touches');
+	assert.ok(!await touchDrawn(page), 'invisible to start with');
+	// The label sits over the invisible Hide box, so the tap has to reach Show.
 	await page.locator('#touchShow').tap();
-	assert.ok(await touchShown(page), 'the buttons are back');
+	assert.ok(await touchDrawn(page), 'drawn after Show');
+	await page.locator('#touchHide').tap();
+	assert.ok(!await touchDrawn(page), 'invisible after Hide');
+	assert.ok((await pointId(page, middle.x, middle.y)).startsWith('touch'), 'still catching touches');
+	await page.close();
+});
+
+/*
+A quick tap on a touch button can start and end between two of the game's ten-times-a-second
+looks at the buttons. It used to be lost, which felt like the screen ignoring light taps.
+*/
+const movesNow = async page => Number((await page.locator('#moves').textContent()).match(/\d+/)[0]);
+
+test('a tap on a touch button that ends before the next look still counts once', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true });
+	const before = await movesNow(page);
+	// Press and let go inside one browser turn, so the game never sees the button held.
+	await page.evaluate(() => {
+		const target = document.getElementById('touchRight');
+		const box = target.getBoundingClientRect();
+		const point = new Touch({ identifier: 1, target, clientX: box.left + 5, clientY: box.top + 5 });
+		target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true,
+			touches: [point], targetTouches: [point], changedTouches: [point] }));
+		target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true,
+			touches: [], targetTouches: [], changedTouches: [point] }));
+	});
+	await page.waitForFunction(n => Number(document.querySelector('#moves').textContent.match(/\d+/)[0]) > n, before);
+	// One tap is one turn: wait out the turn and check nothing more happens.
+	await page.waitForTimeout(2500);
+	assert.strictEqual(await movesNow(page), before + 1, 'exactly one turn');
+	await page.close();
+});
+
+test('a cancelled touch is not counted as a tap', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true });
+	const before = await movesNow(page);
+	await page.evaluate(() => {
+		const target = document.getElementById('touchRight');
+		const box = target.getBoundingClientRect();
+		const point = new Touch({ identifier: 1, target, clientX: box.left + 5, clientY: box.top + 5 });
+		target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true,
+			touches: [point], targetTouches: [point], changedTouches: [point] }));
+		target.dispatchEvent(new TouchEvent('touchcancel', { bubbles: true, cancelable: true,
+			touches: [], targetTouches: [], changedTouches: [point] }));
+	});
+	await page.waitForTimeout(2500);
+	assert.strictEqual(await movesNow(page), before, 'no turn');
 	await page.close();
 });
 
