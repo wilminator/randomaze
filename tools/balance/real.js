@@ -6,7 +6,7 @@
 // and reports deaths, XP per run, fights and ticks. The real dungeon has no skills or potions yet,
 // so this measures the core loop: stats, the combat maths, monster placement and their chasing.
 //
-// Content overrides (to try tuned monsters without editing dungeon.js):
+// Content overrides (also "classes":{"mage":{"hp":40}} to change a class's base stats) (to try tuned monsters without editing dungeon.js):
 //   CONTENT='{"monsterGrowth":0.15,"monsterPower":0.3}' node real.js
 // heroGrowth merges into the table's heroGrowth, e.g. CONTENT='{"heroGrowth":{"def":0.15}}'.
 // monsterPower scales every monster's HP and ATK (both, each by this factor). classPower scales a
@@ -41,6 +41,7 @@ for (const k of ['monsterGrowth', 'monsterXpGrowth', 'cellsPerMonster']) if (ove
 if (override.monsterPower !== undefined) for (const m of Object.values(content.monsters)) { m.hp *= override.monsterPower; m.atk *= override.monsterPower; }
 Object.assign(content.heroGrowth, override.heroGrowth ?? {});
 if (override.headStart) content.headStart = {hp: 0, sp: 0, ...override.headStart};   // e.g. {"hp":10,"sp":3}   // e.g. {"def":0.15,"sp":0.15}
+for (const [cls, o] of Object.entries(override.classes ?? {})) Object.assign(content.classes[cls], o);   // e.g. {"mage":{"sp":99}}
 for (const [cls, p] of Object.entries(override.classPower ?? {})) { content.classes[cls].atk *= p; if (content.classes[cls].spell) content.classes[cls].spell *= p; }
 // Keep the placement code's view of the content in the engine's realm.
 const contentInCtx = vm.runInContext('(' + JSON.stringify(content) + ')', ctx);
@@ -88,6 +89,7 @@ function botAction(game) {
 	if (USE_POTIONS && hpShare < 0.5 && game.bag.length) return 'I';
 	if (canCast && k.kind == 'heal' && hpShare < 0.6) return '1';
 	if (canCast && k.kind == 'aimed-shot' && game.shotTarget(k.range)) return '1';
+	if (canCast && k.kind == 'firebolt' && process.env.FIRE1 === '1' && game.shotTarget(1)) return '1';
 	const dir = nextStep(game), p = game.player;
 	if (dir == 'U' || dir == 'D') return dir;
 	if (dir === p.dir) return 'F';
@@ -96,7 +98,7 @@ function botAction(game) {
 
 const bandOf = (level, w) => Math.floor((level - 1) / w);
 const NEVER = Array.from({length: 21}, (_, i) => i === 0 ? 0 : 1e12);   // no mid-run level-ups
-const CLASSES = Object.keys(content.classes);
+const CLASSES = process.env.CLASSES_ONLY ? process.env.CLASSES_ONLY.split(',') : Object.keys(content.classes);
 
 const built = [];
 for (let d = 1; d <= days; ++d) {

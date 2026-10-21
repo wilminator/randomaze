@@ -101,3 +101,26 @@ Cleric 54%, Monk 79%, Mage 50% (96% when Firebolt cost 3 SP; it now costs 2, so 
 The stand-in only walks the shortest route to the exit, so it meets about 10 fights and finds about 2
 of the dungeon's ~10 potions. A player who explores finds far more, so these deaths are an upper
 bound. Monk and Rogue die most after the Mage fix: they are the ones chased into the most fights.
+
+## Why the early Mage dies (Firebolt 2 SP, Easy, hero levels 1 / 3 / 5, 18 runs per cell)
+
+`CLASSES_ONLY=mage node real.js 6 3 4` with `CONTENT` overrides (`classes`, `trapDamage`), `SKILLS=0`, `POTIONS=0`:
+
+| What is changed | L1 | L3 | L5 |
+|---|---|---|---|
+| as built | 39% | 33% | 44% |
+| no traps | 39% | 33% | 39% |
+| no Firebolt (basic attack only) | 100% | 100% | 100% |
+| no potions | 56% | 56% | 61% |
+| DEF 1 -> 4 | 39% | 22% | 39% |
+| HP x2 | 28% | 17% | 44% |
+| SP unlimited | 28% | 17% | 22% |
+| HP x2 and SP unlimited | 17% | 17% | 17% |
+
+The limiting factor is SP: the Mage's basic attack (ATK 4) cannot kill anything, so once the ~9
+Firebolts of a run are spent it is helpless. Traps and DEF barely matter. Potions help a lot.
+
+The 1-cell out-of-combat Firebolt (`FIRE1=1`) does not help a rule-following bot: burning every
+adjacent monster raised level 1 deaths from 39% to 78%, because a monster that survives the bolt
+wakes up, chases, and takes away the hero's first strike, and the SP is spent either way. It is a tool
+for a player who picks the target (a monster that blocks a corridor, one at low HP), not free power.
