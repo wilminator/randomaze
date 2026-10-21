@@ -103,7 +103,7 @@ const openDoorFxns = {
 const gameDebug = false; // allow wall passthrough
 
 /*
-Look variety. Walls, floors and doors are picked from what the page loaded, and the picks
+Look variety. Walls, floors, ceilings and doors are picked from what the page loaded, and the picks
 must be the same every time the same maze is shown. They come from a hash of the maze seed
 and the position, never from the seeded generator, so they do not change which key or door
 look any other part of the UI gets, and never touch the maze, the game's RNG or replays.
@@ -179,7 +179,7 @@ class MazeHtml{
 		// How the look of walls and floors varies inside one maze floor (see varietyPick).
 		// patch: how many cells wide a run of one look is. baseShare: how much of the maze
 		// floor uses its main look, from 0 to 1. Set baseShare to 1 for one look per floor.
-		this.variety = {wall:{patch:3, baseShare:0.6}, floor:{patch:2, baseShare:0.6}};
+		this.variety = {wall:{patch:3, baseShare:0.6}, floor:{patch:2, baseShare:0.6}, ceiling:{patch:2, baseShare:0.6}};
 		// Prefix for the images this file loads itself (the map's player marker), relative to the page.
 		// The site serves img/ next to its pages; a page elsewhere sets this, e.g. '../ui/'.
 		this.assetRoot = '';
@@ -214,13 +214,23 @@ class MazeHtml{
 			this.seed, 'floor', floor, Math.floor(row / patch), Math.floor(column / patch));
 	}
 
+	// The CSS class for the ceiling of the cell at this row and column, or '' when no ceiling images were loaded.
+	ceilingTile(floor, row, column) {
+		const names = this.walls.filter(w=>w.tags.includes('ceiling')).map(w=>`ceiling_${w.name}`);
+		if (names.length == 0) return '';
+		const {patch, baseShare} = this.variety.ceiling;
+		return varietyPick(names, this.ceilingBase[floor] % names.length, baseShare,
+			this.seed, 'ceiling', floor, Math.floor(row / patch), Math.floor(column / patch));
+	}
+
 	loadWall(wall){
 		/*
 		{
 			name: name of the image
 			css: css definition for this wall
-			tags: array of possible use locations: wall, ceiling, or floor. A wall with the wall tag
-			      is used for walls, with the floor tag for the floor of each cell (it can have both).
+			tags: array of possible use locations: wall, ceiling, or floor. An image with the wall tag
+			      is used for walls, with floor for the floor of each cell, and with ceiling for the
+			      ceiling (it can have several).
 		}
 		*/
 		this.walls.push(wall);
@@ -475,7 +485,7 @@ class MazeHtml{
 					const pz = 100 * row; // front-back
 					const contents = $('<div>').addClass('offset contents').css('transform', `translate3d(${px}vmin, 0vmin, ${pz}vmin)`);
 					const fTile = $('<div>').addClass(`offset floor ${this.floorTile(floor, row, column)}`).css('transform', `translate3d(${px}vmin, 50vmin, ${pz}vmin) rotateX(90deg)`);
-					const cTile = $('<div>').addClass('offset ceiling').css('transform', `translate3d(${px}vmin, -50vmin, ${pz}vmin) rotateX(90deg)`);
+					const cTile = $('<div>').addClass(`offset ceiling ${this.ceilingTile(floor, row, column)}`).css('transform', `translate3d(${px}vmin, -50vmin, ${pz}vmin) rotateX(90deg)`);
 					cell.html={contents:contents,floor:fTile,ceiling:cTile};
 					const entrance = this.maze.entranceList.filter(e=>e.cell === cell);
 					for (const dir of ['N','E','S','W']) {
@@ -711,7 +721,7 @@ PgDn Descend<br />
 		// Load in wall resources
 		// An image tagged both wall and floor gets a rule for each use.
 		for (const wall of this.walls){
-			for (const use of ['wall', 'floor']) {
+			for (const use of ['wall', 'floor', 'ceiling']) {
 				if (!wall.tags.includes(use)) continue;
 				const name = `${use}_${wall.name}`;
 				const item = this.styleSheet.insertRule(`.${name} {${wall.css}}`);
@@ -722,6 +732,7 @@ PgDn Descend<br />
 		this.wallTiles = [...Array(this.maze.floors)].map(_=>`wall_${this.selectRandomTag(this.walls,'wall').name}`);
 		// Each maze floor leans towards one floor image the same way, if any were loaded.
 		this.floorBase = [...Array(this.maze.floors)].map((_, f)=>Math.floor(varietyRoll(this.seed, 'floorbase', f) * 4294967296));
+		this.ceilingBase = [...Array(this.maze.floors)].map((_, f)=>Math.floor(varietyRoll(this.seed, 'ceilingbase', f) * 4294967296));
 
 		// Keys and Doors
 		// Generate one key for each key in the maze.		
