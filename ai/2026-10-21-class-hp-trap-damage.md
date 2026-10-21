@@ -1,4 +1,4 @@
-# Class HP and gentler traps
+# Class HP, gentler traps and class attack
 
 - **Pull request:** #29 (into `staging-combat`)
 - **Author:** Claude Code, working for Mike (@wilminator)
@@ -10,7 +10,8 @@ Level 1 heroes were too fragile for the first dungeon runs, and traps hurt too m
 inconvenience, not a game killer. Base HP per class is raised so that, with the 10-level head start, level 1 HP is
 Warrior 115, Monk 98, Cleric 93, Ranger 93, Rogue 85 and Mage 75. Spikes now cost 5% and darts 3% of max HP
 (was 15% and 10%). The same pull request carries the collector bot from the balance thread, which measures
-how well a level 1 Mage clears a band. This is the first step in rebalancing the classes; more patches follow.
+how well a level 1 Mage clears a band. A follow-up commit raises attack (Warrior 9, Rogue 9, Ranger 8.5, Monk 9.5) so all six classes
+clear a level 1 Easy maze 54-65% of the time. Rebalancing continues, so more patches may follow.
 
 ## What the AI did
 
