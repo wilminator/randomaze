@@ -356,6 +356,18 @@ class MazeHtml{
 		// Whether the on-screen touch buttons show: 'auto' (on a device with a touch screen),
 		// 'on' or 'off'. A page that offers a setting for it calls setTouchControls().
 		this.touchControls = 'auto';
+		// How the touch buttons are used: 'taps' (a touch on a box acts at once), 'swipes' (only
+		// swipes act; taps are ignored) or 'both' (a tap acts when the finger lifts, a swipe acts as
+		// soon as it is clear, a finger held still walks). Change it with setTouchStyle().
+		this.touchStyle = 'taps';
+		// With swipes on, which way a swipe points: 'point' (swipe where you want to go, up is
+		// forward, left turns left) or 'drag' (drag the view like Street View: everything flips,
+		// down is forward, dragging left turns right). Change it with setSwipeDirection().
+		this.swipeDirection = 'point';
+		// When the map sits below the maze the page scrolls, and one side strip of the touch
+		// buttons is left to the browser for scrolling it: 'left' or 'right'. The other strip
+		// climbs ladders by swipe. Change it with setScrollSide().
+		this.scrollSide = 'right';
 		// Whether the maze is drawn in solid contrasting colors instead of pictures. Change it with setHighContrast().
 		this.highContrast = false;
 		// This engine needs a script tag in the root html page.
@@ -802,6 +814,29 @@ class MazeHtml{
 		$('#maze').toggleClass('touchOn', show);
 	}
 
+	// How touches act, see touchStyle: 'taps', 'swipes' or 'both'. Can change while playing.
+	setTouchStyle(style) {
+		this.touchStyle = ['swipes', 'both'].includes(style) ? style : 'taps';
+	}
+
+	// Which way a swipe points, see swipeDirection: 'point' or 'drag'. Can change while playing.
+	setSwipeDirection(direction) {
+		this.swipeDirection = direction == 'drag' ? 'drag' : 'point';
+	}
+
+	// Which side strip scrolls the page when the map is below the maze: 'left' or 'right'.
+	// The stylesheet reads the class this sets; the touch code reads scrollSide.
+	setScrollSide(side) {
+		this.scrollSide = side == 'left' ? 'left' : 'right';
+		$('#maze').toggleClass('scrollLeft', this.scrollSide == 'left').toggleClass('scrollRight', this.scrollSide == 'right');
+	}
+
+	// True when the page puts the map below the maze (the same screens the stylesheet switches
+	// to portrait for), so the page can scroll under a finger on the touch buttons.
+	mapIsBelow() {
+		return window.matchMedia('screen and (max-width: 140vh)').matches;
+	}
+
 	/*
 	Draw the maze in solid, strongly contrasting colors instead of textured art (an accessibility
 	option). The stylesheet does the drawing: this only sets the class `highContrast` on the page,
@@ -865,6 +900,7 @@ PgDn Descend<br />
 `
 		this.rootNode.append(gameUi);
 		this.setTouchControls(this.touchControls);
+		this.setScrollSide(this.scrollSide);
 		this.mapHtml = this.generateMapHtml();
 		if (helpFxn) {
 			this.helpFxn = helpFxn;
@@ -1382,65 +1418,198 @@ PgDn Descend<br />
 			Object.keys(keyPressed).forEach(key => delete keyPressed[key]);
 		});
 
-		// A phone can cancel a touch (a long press, a notification, a swipe the browser takes
-		// as a scroll) and send touchcancel in place of touchend; it must let go of the button too.
-		var [mousedown, mouseup] = navigator.maxTouchPoints > 0 ? ['touchstart','touchend touchcancel touchmove'] : ['mousedown','mouseup mouseout'] ;
-
-		$('#touchNav .touchNav').on(mousedown, function (event){
-			const map = {
-				touchFwd: 'ArrowUp',
-				touchBack: 'ArrowDown',
-				touchLeft: 'ArrowLeft',
-				touchRight: 'ArrowRight',
-				touchUp: 'PageUp',
-				touchDown: 'PageDown',
-			};
-			const id = $(event.target).attr('id');
-			event.stopImmediatePropagation();
-			// Keep the browser from turning a held button into a text selection or a scroll.
-			if (event.type == 'touchstart') {
-				event.preventDefault();
-			}
-			if (id == 'touchHide') {
-				// Hide only stops drawing the buttons: they stay live, so a tap on the maze
-				// still works. The faint Show label draws them again.
-				$('#maze').addClass('touchHidden').removeClass('touchVisible');
-				return;
-			}
-			keyPressed[map[id]] = true;
-			tappedKey = map[id];
+		// The key each touch button stands for.
+		const buttonKeys = {
+			touchFwd: 'ArrowUp',
+			touchBack: 'ArrowDown',
+			touchLeft: 'ArrowLeft',
+			touchRight: 'ArrowRight',
+			touchUp: 'PageUp',
+			touchDown: 'PageDown',
+		};
+		// Hold a button's key down. tappedKey keeps a press that ends before the next look.
+		function pressButton(key) {
+			keyPressed[key] = true;
+			tappedKey = key;
 			eventQueue.push('keydown');
-		}).on(mouseup, function (event){
-			const map = {
-				touchFwd: 'ArrowUp',
-				touchBack: 'ArrowDown',
-				touchLeft: 'ArrowLeft',
-				touchRight: 'ArrowRight',
-				touchUp: 'PageUp',
-				touchDown: 'PageDown',
-			};
-			const id = $(event.target).attr('id');
-			console.log(`${id}.${event.type}`);
-			if (event.type == 'touchmove'){
-				// changedTouches holds the finger that moved; touches[0] could be another finger.
-				// elementFromPoint wants coordinates in the window, not the page.
-				const touch = event.changedTouches[0];
-				if (event.target === document.elementFromPoint(touch.clientX,touch.clientY)) {
-					//Have not left.
-					return;
-				}
+		}
+		// Let go. A cancelled touch was not a tap, so it takes back the remembered press too.
+		function releaseButton(key, cancelled) {
+			if (key && keyPressed[key]) {
+				delete keyPressed[key];
 			}
-			if (map[id] && keyPressed[map[id]]) {
-				delete keyPressed[map[id]];
-			}
-			// A cancelled touch was not a tap.
-			if (event.type == 'touchcancel' && tappedKey == map[id]) {
+			if (cancelled && key && tappedKey == key) {
 				tappedKey = null;
 			}
 			eventQueue.push('keyup');
+		}
+		// Hide only stops drawing the buttons: they stay live, so a tap on the maze
+		// still works. The faint Show label draws them again.
+		function hideTouchButtons() {
+			$('#maze').addClass('touchHidden').removeClass('touchVisible');
+		}
+
+		if (navigator.maxTouchPoints == 0) {
+			$('#touchNav .touchNav').on('mousedown', function (event){
+				const id = $(event.target).attr('id');
+				event.stopImmediatePropagation();
+				if (id == 'touchHide') {
+					hideTouchButtons();
+					return;
+				}
+				pressButton(buttonKeys[id]);
+			}).on('mouseup mouseout', function (event){
+				releaseButton(buttonKeys[$(event.target).attr('id')], false);
+			});
+		}
+
+		/*
+		Touch screens. What a finger does depends on the touch style (see setTouchStyle):
+		 taps    a touch acts at once, as a mouse press does, and a finger sliding off the box lets go.
+		 swipes  only a swipe acts: it is read from how far the finger has moved, wherever it began.
+		 both    a quick tap acts when the finger lifts, a swipe acts as soon as it is clear, and a
+		         finger held still for HOLD_MS starts walking (like holding the box) until it lifts.
+		A swipe in the middle of the screen turns (sideways), walks forward (up) or back (down), and
+		keeps walking while the finger stays down. A swipe up or down that begins on a side strip
+		climbs a ladder. A swipe that is blocked (a wall, no ladder here) or too crooked to read does
+		nothing at all and costs no move, because moves are scored. With swipeDirection 'drag' every
+		direction is flipped, as if the finger dragged the picture.
+
+		The side strip chosen as the scroll side (see setScrollSide) is the exception when the map
+		is below the maze: the browser owns its vertical drags so the page can scroll, and a tap
+		there acts like the 'both' tap (on lift), because the browser may be about to scroll.
+		*/
+		const HOLD_MS = 250;
+		const TAP_SLOP = 10;
+		// A swipe must travel this far, about a tenth of the maze, and be this much more
+		// sideways than up (or the other way round) to count; anything else is ambiguous.
+		const swipeDistance = () => Math.max(24, $('#maze .viewport').width() * 0.1);
+		const CLEAR_RATIO = 1.5;
+		// Fingers on the buttons, by touch identifier.
+		const fingers = new Map();
+		// The fingers an event is about. A script that fires a bare touch event has none listed;
+		// that counts as one finger, so such an event still works as a press.
+		const fingersOf = event => event.changedTouches && event.changedTouches.length
+			? [...event.changedTouches] : [{identifier: 0, clientX: 0, clientY: 0}];
+		const isSideStrip = id => id == 'touchLeft' || id == 'touchRight';
+		const isScrollStrip = id => isSideStrip(id) && localThis.mapIsBelow()
+			&& id == (localThis.scrollSide == 'left' ? 'touchLeft' : 'touchRight');
+
+		// The key a swipe stands for, or null when it is too crooked to tell, or a side strip's
+		// sideways swipe (a strip only climbs).
+		function swipeKey(finger, dx, dy) {
+			if (localThis.swipeDirection == 'drag') {
+				dx = -dx;
+				dy = -dy;
+			}
+			const sideways = Math.abs(dx) > CLEAR_RATIO * Math.abs(dy);
+			const vertical = Math.abs(dy) > CLEAR_RATIO * Math.abs(dx);
+			if (finger.strip) {
+				return vertical ? (dy < 0 ? 'PageUp' : 'PageDown') : null;
+			}
+			if (sideways) {
+				return dx < 0 ? 'ArrowLeft' : 'ArrowRight';
+			}
+			return vertical ? (dy < 0 ? 'ArrowUp' : 'ArrowDown') : null;
+		}
+
+		$('#touchNav .touchNav').on('touchstart', function (event) {
+			const id = $(event.target).attr('id');
+			event.stopImmediatePropagation();
+			const scrolls = isScrollStrip(id);
+			// The browser may not scroll under a finger that is playing the maze, but it must be
+			// allowed to under one on the scroll strip.
+			if (!scrolls) {
+				event.preventDefault();
+			}
+			if (id == 'touchHide') {
+				hideTouchButtons();
+				return;
+			}
+			const style = localThis.touchStyle;
+			for (const touch of fingersOf(event)) {
+				const finger = {
+					id, key: buttonKeys[id], x: touch.clientX, y: touch.clientY,
+					// 'now': acts at once; otherwise it waits for lift, swipe or hold.
+					now: style == 'taps' && !scrolls,
+					swipes: style != 'taps' && !scrolls,
+					taps: style != 'swipes',
+					strip: isSideStrip(id),
+					// The key this finger is pressing, once it has acted; and whether it has
+					// been used up (a swipe that is blocked or ambiguous never turns into a tap).
+					pressed: null, spent: false, timer: null,
+				};
+				fingers.set(touch.identifier, finger);
+				if (finger.now) {
+					finger.pressed = finger.key;
+					pressButton(finger.key);
+				} else if (finger.taps) {
+					finger.timer = setTimeout(() => {
+						finger.timer = null;
+						if (!finger.spent) {
+							finger.pressed = finger.key;
+							pressButton(finger.key);
+						}
+					}, HOLD_MS);
+				}
+			}
+		}).on('touchmove', function (event) {
+			for (const touch of fingersOf(event)) {
+				const finger = fingers.get(touch.identifier);
+				if (!finger || finger.spent && !finger.pressed) {
+					continue;
+				}
+				if (finger.now) {
+					// Sliding off the box lets go of it.
+					if (event.target !== document.elementFromPoint(touch.clientX, touch.clientY)) {
+						fingers.delete(touch.identifier);
+						releaseButton(finger.key, false);
+					}
+					continue;
+				}
+				const dx = touch.clientX - finger.x;
+				const dy = touch.clientY - finger.y;
+				const distance = Math.hypot(dx, dy);
+				if (finger.pressed) {
+					continue;
+				}
+				if (distance > TAP_SLOP) {
+					// Moved too much to be a tap or a hold.
+					clearTimeout(finger.timer);
+					finger.timer = null;
+					finger.taps = false;
+				}
+				if (finger.swipes && distance >= swipeDistance()) {
+					const key = swipeKey(finger, dx, dy);
+					finger.spent = true;
+					// Ask the rules whether this would do anything; if not, nothing happens.
+					if (key && player.canAct(keyActions[key])) {
+						finger.pressed = key;
+						pressButton(key);
+					}
+				}
+			}
+		}).on('touchend touchcancel', function (event) {
+			const cancelled = event.type == 'touchcancel';
+			for (const touch of fingersOf(event)) {
+				const finger = fingers.get(touch.identifier);
+				if (!finger) {
+					continue;
+				}
+				fingers.delete(touch.identifier);
+				clearTimeout(finger.timer);
+				if (finger.pressed) {
+					releaseButton(finger.pressed, cancelled);
+				} else if (!cancelled && finger.taps && !finger.spent) {
+					// A quick tap, acted on as the finger lifts. It is remembered for the next look.
+					tappedKey = finger.key;
+					eventQueue.push('keydown');
+					eventQueue.push('keyup');
+				}
+			}
 		});
 
-		$('#touchShow').on(mousedown, function (event) {
+		$('#touchShow').on(navigator.maxTouchPoints > 0 ? 'touchstart' : 'mousedown', function (event) {
 			event.stopImmediatePropagation();
 			if (event.type == 'touchstart') {
 				event.preventDefault();

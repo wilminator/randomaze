@@ -104,6 +104,9 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
   /* #directions {display: none;} */
   #maze.touchOn:not(.touchHidden) #touchNav {opacity: 1;}
   #maze.touchOn:not(.touchHidden) #touchShow {display: none;}
+  /* The map is below the maze, so the page scrolls: the chosen side strip (setScrollSide) hands
+     vertical drags to the browser. The other strip still climbs ladders by swipe. */
+  #maze.scrollLeft #touchLeft, #maze.scrollRight #touchRight {touch-action: pan-y;}
 }
 
 

@@ -628,3 +628,241 @@ test('touch buttons for moves that would only bump are hidden, and come back whe
 	assert.ok(await page.locator('#touchFwd').isVisible(), 'the hidden box is still there to catch taps');
 	await page.close();
 });
+
+/*
+Swipes. A finger on the touch buttons is read as a tap or a swipe according to the touch
+style: 'taps' (the default, acts at once), 'swipes' (only swipes act) or 'both' (a tap acts as
+the finger lifts, a swipe as soon as it is clear, a finger held still walks). To see which
+action each gesture asks for without waiting on animations, the tests swap the rules'
+act() and canAct() for spies; `log` is every action the game then asked for.
+*/
+async function swipeGame(options = {}) {
+	const { page } = await openDemo('', gameScript(1, 5, 4), { hasTouch: true, viewport: iPadSizes.landscape });
+	await page.evaluate(opts => {
+		const mazehtml = game.mazehtml;
+		if (opts.style) mazehtml.setTouchStyle(opts.style);
+		if (opts.direction) mazehtml.setSwipeDirection(opts.direction);
+		if (opts.side) mazehtml.setScrollSide(opts.side);
+		window.log = [];
+		window.blocked = new Set();
+		const player = mazehtml.player;
+		player.canAct = action => !window.blocked.has(action);
+		player.act = action => { window.log.push(action); return null; };
+	}, options);
+	return page;
+}
+
+// Fire one touch event at a box, `dx`/`dy` pixels from its middle. Returns true when the page
+// called preventDefault (which is how a touch is kept from scrolling the page).
+const touchAt = (page, id, type, dx = 0, dy = 0, identifier = 1) => page.evaluate(([id, type, dx, dy, identifier]) => {
+	const target = document.getElementById(id);
+	const box = target.getBoundingClientRect();
+	const point = new Touch({ identifier, target, clientX: box.left + box.width / 2 + dx, clientY: box.top + box.height / 2 + dy });
+	const touches = type == 'touchend' || type == 'touchcancel' ? [] : [point];
+	const event = new TouchEvent(type, { bubbles: true, cancelable: true, touches, targetTouches: touches, changedTouches: [point] });
+	target.dispatchEvent(event);
+	return event.defaultPrevented;
+}, [id, type, dx, dy, identifier]);
+// Swipe: touch down, move to (dx, dy), lift.
+async function swipe(page, id, dx, dy, { hold = 0 } = {}) {
+	await touchAt(page, id, 'touchstart');
+	await touchAt(page, id, 'touchmove', dx / 2, dy / 2);
+	await touchAt(page, id, 'touchmove', dx, dy);
+	if (hold) await page.waitForTimeout(hold);
+	await touchAt(page, id, 'touchend', dx, dy);
+}
+const actions = async page => {
+	// The game looks at the buttons ten times a second, so give it a few looks.
+	await page.waitForTimeout(450);
+	return page.evaluate(() => window.log);
+};
+const firstActions = async page => [...new Set(await actions(page))];
+const FAR = 120;
+
+test('taps: a touch acts at once, and a swipe is nothing special', async () => {
+	const page = await swipeGame();
+	await touchAt(page, 'touchRight', 'touchstart');
+	assert.deepStrictEqual(await firstActions(page), ['R'], 'acted before the finger lifted');
+	await touchAt(page, 'touchRight', 'touchend');
+	await page.close();
+});
+
+test('swipes only: taps are ignored; a swipe in the middle turns, walks forward and walks back', async () => {
+	const page = await swipeGame({ style: 'swipes' });
+	await touchAt(page, 'touchRight', 'touchstart');
+	await touchAt(page, 'touchRight', 'touchend');
+	await touchAt(page, 'touchFwd', 'touchstart');
+	await page.waitForTimeout(400);
+	await touchAt(page, 'touchFwd', 'touchend');
+	assert.deepStrictEqual(await actions(page), [], 'taps and a still hold do nothing');
+	const cases = [['left', -FAR, 0, 'L'], ['right', FAR, 0, 'R'], ['up', 0, -FAR, 'F'], ['down', 0, FAR, 'B']];
+	for (const [name, dx, dy, action] of cases) {
+		await page.evaluate(() => { window.log = []; });
+		await swipe(page, 'touchFwd', dx, dy);
+		assert.deepStrictEqual(await firstActions(page), [action], `swipe ${name}`);
+	}
+	await page.close();
+});
+
+test('swipes: a swipe keeps walking while the finger stays down, and stops when it lifts', async () => {
+	const page = await swipeGame({ style: 'swipes' });
+	await touchAt(page, 'touchFwd', 'touchstart');
+	await touchAt(page, 'touchFwd', 'touchmove', 0, -FAR);
+	await page.waitForTimeout(550);
+	const walking = await page.evaluate(() => window.log.length);
+	assert.ok(walking >= 3, `kept walking (${walking} steps)`);
+	await touchAt(page, 'touchFwd', 'touchend', 0, -FAR);
+	await page.waitForTimeout(300);
+	const after = await page.evaluate(() => window.log.length);
+	await page.waitForTimeout(500);
+	assert.strictEqual(await page.evaluate(() => window.log.length), after, 'quiet after the lift');
+	await page.close();
+});
+
+test('swipes: the Point and Drag directions are opposites', async () => {
+	const cases = [[-FAR, 0], [FAR, 0], [0, -FAR], [0, FAR]];
+	const point = { '-120,0': 'L', '120,0': 'R', '0,-120': 'F', '0,120': 'B' };
+	const drag = { '-120,0': 'R', '120,0': 'L', '0,-120': 'B', '0,120': 'F' };
+	for (const [direction, expected] of [['point', point], ['drag', drag]]) {
+		const page = await swipeGame({ style: 'swipes', direction });
+		for (const [dx, dy] of cases) {
+			await page.evaluate(() => { window.log = []; });
+			await swipe(page, 'touchFwd', dx, dy);
+			assert.deepStrictEqual(await firstActions(page), [expected[`${dx},${dy}`]], `${direction} ${dx},${dy}`);
+		}
+		await page.close();
+	}
+});
+
+test('swipes: a blocked or crooked swipe does nothing', async () => {
+	const page = await swipeGame({ style: 'swipes' });
+	await page.evaluate(() => window.blocked.add('F'));
+	await swipe(page, 'touchFwd', 0, -FAR);
+	assert.deepStrictEqual(await actions(page), [], 'forward into a wall');
+	await swipe(page, 'touchFwd', FAR, -FAR);
+	assert.deepStrictEqual(await actions(page), [], 'a diagonal is ambiguous');
+	await swipe(page, 'touchFwd', 15, -15);
+	assert.deepStrictEqual(await actions(page), [], 'too short');
+	// And what is not blocked still works afterwards.
+	await swipe(page, 'touchFwd', FAR, 0);
+	assert.deepStrictEqual(await firstActions(page), ['R']);
+	await page.close();
+});
+
+test('swipes: a vertical swipe on a side strip climbs, in Drag it flips, and it is blocked without a ladder', async () => {
+	// Landscape: no page scrolling, so both strips climb.
+	for (const strip of ['touchLeft', 'touchRight']) {
+		const page = await swipeGame({ style: 'swipes' });
+		await swipe(page, strip, 0, -FAR);
+		assert.deepStrictEqual(await firstActions(page), ['U'], `${strip} up`);
+		await page.evaluate(() => { window.log = []; });
+		await swipe(page, strip, 0, FAR);
+		assert.deepStrictEqual(await firstActions(page), ['D'], `${strip} down`);
+		await page.evaluate(() => { window.log = []; window.blocked.add('U'); });
+		await swipe(page, strip, 0, -FAR);
+		assert.deepStrictEqual(await actions(page), [], `${strip}: no ladder up`);
+		await page.evaluate(() => { window.log = []; });
+		await swipe(page, strip, FAR, 0);
+		assert.deepStrictEqual(await actions(page), [], `${strip}: a sideways swipe on a strip is nothing`);
+		await page.close();
+	}
+	const dragging = await swipeGame({ style: 'swipes', direction: 'drag' });
+	await swipe(dragging, 'touchLeft', 0, FAR);
+	assert.deepStrictEqual(await firstActions(dragging), ['U'], 'dragging down climbs up');
+	await dragging.close();
+});
+
+test('taps and swipes: a tap acts as the finger lifts, a held finger walks, a swipe acts', async () => {
+	const page = await swipeGame({ style: 'both' });
+	await touchAt(page, 'touchRight', 'touchstart');
+	await page.waitForTimeout(150);
+	assert.deepStrictEqual(await page.evaluate(() => window.log), [], 'nothing before the lift');
+	await touchAt(page, 'touchRight', 'touchend');
+	assert.deepStrictEqual(await firstActions(page), ['R'], 'acted on lift');
+	// Held still past the hold time: walks until the lift.
+	await page.evaluate(() => { window.log = []; });
+	await touchAt(page, 'touchFwd', 'touchstart');
+	await page.waitForTimeout(900);
+	const held = await page.evaluate(() => window.log.length);
+	assert.ok(held >= 3, `held finger kept walking (${held})`);
+	await touchAt(page, 'touchFwd', 'touchend');
+	await page.waitForTimeout(300);
+	const after = await page.evaluate(() => window.log.length);
+	await page.waitForTimeout(400);
+	assert.strictEqual(await page.evaluate(() => window.log.length), after, 'stopped on lift');
+	assert.ok(after <= held + 2, 'a held finger does not also tap on lift');
+	// A swipe still acts, once, and a cancelled touch is nothing.
+	await page.evaluate(() => { window.log = []; });
+	await swipe(page, 'touchFwd', -FAR, 0);
+	assert.deepStrictEqual(await firstActions(page), ['L']);
+	await page.evaluate(() => { window.log = []; });
+	await touchAt(page, 'touchLeft', 'touchstart');
+	await touchAt(page, 'touchLeft', 'touchcancel');
+	assert.deepStrictEqual(await actions(page), [], 'cancel is not a tap');
+	await page.close();
+});
+
+/*
+The page-scroll strip. With the map below the maze (a narrow or tall window) the page can
+scroll, so one side strip is left to the browser for it: the player picks the side. Its
+taps act as the Left/Right turn but on lift, the browser owns its vertical drags, and the
+other strip climbs ladders by swipe, in every touch style.
+*/
+const touchAction = (page, id) => page.evaluate(id => getComputedStyle(document.getElementById(id)).touchAction, id);
+
+test('with the map below the maze one side strip scrolls the page, and the player picks which', async () => {
+	const { page } = await openDemo('', gameScript(1, 5, 4), { hasTouch: true, viewport: iPadSizes.portrait });
+	assert.strictEqual(await touchAction(page, 'touchRight'), 'pan-y', 'the right strip scrolls by default');
+	assert.strictEqual(await touchAction(page, 'touchLeft'), 'none');
+	assert.strictEqual(await touchAction(page, 'touchFwd'), 'none');
+	await page.evaluate(() => game.mazehtml.setScrollSide('left'));
+	assert.strictEqual(await touchAction(page, 'touchLeft'), 'pan-y');
+	assert.strictEqual(await touchAction(page, 'touchRight'), 'none');
+	await page.close();
+});
+
+test('with the map beside the maze nothing scrolls, so neither strip is left to the browser', async () => {
+	const { page } = await openDemo('?type=1&seed=5', null, { hasTouch: true, viewport: iPadSizes.landscape });
+	assert.strictEqual(await touchAction(page, 'touchRight'), 'none');
+	assert.strictEqual(await touchAction(page, 'touchLeft'), 'none');
+	await page.close();
+});
+
+for (const style of ['taps', 'both']) {
+	test(`scroll strip (${style}): the browser may scroll under it; a tap acts on lift; the other strip climbs`, async () => {
+		const page = await swipeGame({ style });
+		// swipeGame uses landscape; the strips only scroll with the map below the maze.
+		await page.setViewportSize(iPadSizes.portrait);
+		await page.evaluate(() => game.mazehtml.setScrollSide('right'));
+		assert.strictEqual(await touchAt(page, 'touchRight', 'touchstart'), false, 'touchstart is not cancelled, so the page can scroll');
+		await page.waitForTimeout(150);
+		assert.deepStrictEqual(await page.evaluate(() => window.log), [], 'a tap waits for the lift');
+		await touchAt(page, 'touchRight', 'touchend');
+		assert.deepStrictEqual(await firstActions(page), ['R'], 'and then turns');
+		// A drag the browser takes as a scroll ends in touchcancel and acts as nothing.
+		await page.evaluate(() => { window.log = []; });
+		await touchAt(page, 'touchRight', 'touchstart');
+		await touchAt(page, 'touchRight', 'touchmove', 0, -FAR);
+		await touchAt(page, 'touchRight', 'touchcancel', 0, -FAR);
+		assert.deepStrictEqual(await actions(page), [], 'a scroll does not turn or climb');
+		// The other strip: touches are kept from scrolling, and a vertical swipe climbs.
+		assert.strictEqual(await touchAt(page, 'touchLeft', 'touchstart'), true, 'the other strip stops the page scrolling');
+		await touchAt(page, 'touchLeft', 'touchend');
+		await page.evaluate(() => { window.log = []; });
+		if (style == 'both') {
+			await swipe(page, 'touchLeft', 0, -FAR);
+			assert.deepStrictEqual(await firstActions(page), ['U'], 'ladder swipe on the other strip');
+		}
+		await page.close();
+	});
+}
+
+test('scroll strip: swipes never act on it, and in swipes-only style its taps are ignored', async () => {
+	const page = await swipeGame({ style: 'swipes' });
+	await page.setViewportSize(iPadSizes.portrait);
+	await swipe(page, 'touchRight', 0, -FAR);
+	await touchAt(page, 'touchRight', 'touchstart');
+	await touchAt(page, 'touchRight', 'touchend');
+	assert.deepStrictEqual(await actions(page), []);
+	await page.close();
+});
