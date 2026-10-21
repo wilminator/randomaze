@@ -124,3 +124,10 @@ The 1-cell out-of-combat Firebolt (`FIRE1=1`) does not help a rule-following bot
 adjacent monster raised level 1 deaths from 39% to 78%, because a monster that survives the bolt
 wakes up, chases, and takes away the hero's first strike, and the SP is spent either way. It is a tool
 for a player who picks the target (a monster that blocks a corridor, one at low HP), not free power.
+
+## SP doubled (Mike, 2026-10-21)
+
+All SP values are doubled for finer tuning: class SP (Warrior 12, Rogue 20, Mage 32, Cleric 24,
+Ranger 20, Monk 20), skill costs (Power Strike 4, Backstab 4, Firebolt 4, Heal 8, Aimed Shot 4,
+Flurry 6), walking regen (1 SP per 4 steps) and Guard's gain (2). The ratios are unchanged, so the
+results above still stand; the SP-potion and "SP unlimited" experiments used the old, halved numbers.

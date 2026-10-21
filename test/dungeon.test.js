@@ -256,14 +256,14 @@ test('without a first strike the faster side swings first', () => {
 	assert.strictEqual(game.fight, null);
 });
 
-test('guard halves the damage and gives back 1 SP', () => {
+test('guard halves the damage and gives back 2 SP', () => {
 	const game = setup({ content: blind(), monsters: [{ species: 'orc', col: 1 }], heroOver: { level: 1 } });
 	run(game, 'F');                                // into the orc: first strike for the hero
-	game.sp = 3;
+	game.sp = 6;
 	// Orc ATK 8, hero DEF 5 -> 8 x 1.0 - 2.5 = 5.5. A hit rolls 0.5 for damage: 8 x 1.0 = 8 - 2.5 = 5.5 -> 6; guarded: 3.
 	game.dice.queue.push(0, 0.5, 0.99);
 	run(game, 'G');
-	assert.strictEqual(game.sp, 4);
+	assert.strictEqual(game.sp, 8);
 	assert.strictEqual(game.hp, 30 - 3);
 });
 
@@ -599,12 +599,12 @@ const orcFight = (cls) => {
 	return game;
 };
 
-test('Warrior: Power Strike hits for 1.8x and costs 2 SP', () => {
+test('Warrior: Power Strike hits for 1.8x and costs 4 SP', () => {
 	const game = orcFight('warrior');
 	game.dice.queue.push(...HIT);                  // 7 x 0.85 - 4/2 = 3.95; x 1.8 = 7.1 -> 7
 	run(game, '1');
 	assert.strictEqual(game.monsters[0].hp, 28 - 7);
-	assert.strictEqual(game.sp, 4);
+	assert.strictEqual(game.sp, 8);
 	game.sp = 1;
 	assert.strictEqual(game.act('1').reason, 'not enough SP for Power Strike');
 });
@@ -622,7 +622,7 @@ test('Mage: Firebolt ignores DEF and needs no to-hit roll', () => {
 	game.dice.queue.push(0.5);                     // spell 9 x 1.0 = 9, whatever the orc\'s DEF
 	run(game, '1');
 	assert.strictEqual(game.monsters[0].hp, 28 - 9);
-	assert.strictEqual(game.sp, 14);
+	assert.strictEqual(game.sp, 28);
 });
 
 test('Mage: Firebolt out of a fight burns a monster in the next cell, and only that close', () => {
@@ -631,7 +631,7 @@ test('Mage: Firebolt out of a fight burns a monster in the next cell, and only t
 	const ticks = near.ticks;
 	run(near, '1');
 	assert.strictEqual(near.monsters[0].hp, 28 - 9);
-	assert.strictEqual(near.sp, 14);
+	assert.strictEqual(near.sp, 28);
 	assert.strictEqual(near.ticks, ticks + 1);
 	assert.strictEqual(near.monsters[0].state, 'chase', 'the orc comes for the hero');
 	const weak = setup({ content: blind(), monsters: [{ species: 'rat', col: 1 }], heroOver: { cls: 'mage' } });
@@ -650,7 +650,7 @@ test('Cleric: Heal restores 40% of max HP, in a fight or out of one', () => {
 	run(game, '1');
 	assert.strictEqual(game.hp, 5 + 10, '40% of 24 rounds up to 10');
 	assert.strictEqual(game.ticks, ticks + 1);
-	assert.strictEqual(game.sp, 8);
+	assert.strictEqual(game.sp, 16);
 	const fight = orcFight('cleric');
 	fight.hp = 5;
 	run(fight, '1');                               // heals to 15; the orc then misses (default dice)
@@ -664,7 +664,7 @@ test('Ranger: Aimed Shot hits a monster in line before it reaches you', () => {
 	const ticks = game.ticks;
 	run(game, '1');
 	assert.strictEqual(game.kills, 1);
-	assert.strictEqual(game.sp, 8);
+	assert.strictEqual(game.sp, 16);
 	assert.strictEqual(game.ticks, ticks + 1);
 	assert.strictEqual(game.act('1').reason, 'nothing in line to shoot');
 	const far = setup({ content: blind(), monsters: [{ species: 'rat', col: 9 }], heroOver: { cls: 'ranger' } });
@@ -685,14 +685,14 @@ test('Monk: Flurry is three hits at half damage', () => {
 	run(game, '1');
 	assert.strictEqual(game.monsters[0].hp, 28 - 3);
 	assert.strictEqual(game.counts.hits, 3);
-	assert.strictEqual(game.sp, 7);
+	assert.strictEqual(game.sp, 14);
 });
 
 test('skills used out of turn are refused and change nothing', () => {
 	const game = setup({ content: pinned() });
 	const reason = game.act('1').reason;
 	assert.strictEqual(reason, 'Power Strike is used in a fight');
-	assert.strictEqual(game.sp, 6);
+	assert.strictEqual(game.sp, 12);
 	assert.strictEqual(game.actions, '');
 });
 

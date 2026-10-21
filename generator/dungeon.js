@@ -46,7 +46,9 @@ const DUNGEON_CONTENT = {
 	monsterGrowth: 0.15,
 	monsterXpGrowth: 1.10,
 	// 1 SP back for this many steps (a 'move' result: walking, not turning).
-	stepsPerSp: 8,
+	stepsPerSp: 4,
+	// SP a Guard gives back.
+	guardSp: 2,
 
 	// Which kinds of move cost a tick. Same shape as TickLayer's policy.
 	tickPolicy: { move: true, turn: true, door: true, close: true, wait: true, trap: true, fall: true, rope: true, item: true, skill: true, win: false },
@@ -87,22 +89,22 @@ const DUNGEON_CONTENT = {
 	//   aimed-shot    a `mult` x hit; out of a fight, shoots a monster in line within `range` cells
 	//   flurry        `hits` hits, each worth `mult` x
 	skills: {
-		warrior: { name: 'Power Strike', kind: 'power-strike', sp: 2, mult: 1.8 },
-		rogue:   { name: 'Backstab',     kind: 'backstab',     sp: 2, mult: 3 },
-		mage:    { name: 'Firebolt',     kind: 'firebolt',     sp: 2 },
-		cleric:  { name: 'Heal',         kind: 'heal',         sp: 4, heal: 0.4 },
-		ranger:  { name: 'Aimed Shot',   kind: 'aimed-shot',   sp: 2, mult: 1.5, range: 6 },
-		monk:    { name: 'Flurry',       kind: 'flurry',       sp: 3, mult: 0.5, hits: 3 },
+		warrior: { name: 'Power Strike', kind: 'power-strike', sp: 4, mult: 1.8 },
+		rogue:   { name: 'Backstab',     kind: 'backstab',     sp: 4, mult: 3 },
+		mage:    { name: 'Firebolt',     kind: 'firebolt',     sp: 4 },
+		cleric:  { name: 'Heal',         kind: 'heal',         sp: 8, heal: 0.4 },
+		ranger:  { name: 'Aimed Shot',   kind: 'aimed-shot',   sp: 4, mult: 1.5, range: 6 },
+		monk:    { name: 'Flurry',       kind: 'flurry',       sp: 6, mult: 0.5, hits: 3 },
 	},
 
 	// Heroes (design 7.1). `crit` is the chance of a critical hit.
 	classes: {
-		warrior: { name: 'Warrior', hp: 30, sp: 6,  atk: 7, def: 5, spd: 4, crit: 0.05 },
-		rogue:   { name: 'Rogue',   hp: 20, sp: 10, atk: 6, def: 2, spd: 8, crit: 0.12 },
-		mage:    { name: 'Mage',    hp: 16, sp: 16, atk: 4, def: 1, spd: 5, crit: 0.05, spell: 9 },
-		cleric:  { name: 'Cleric',  hp: 24, sp: 12, atk: 5, def: 4, spd: 4, crit: 0.05 },
-		ranger:  { name: 'Ranger',  hp: 22, sp: 10, atk: 6, def: 3, spd: 7, crit: 0.05 },
-		monk:    { name: 'Monk',    hp: 22, sp: 10, atk: 5, def: 3, spd: 9, crit: 0.05 },
+		warrior: { name: 'Warrior', hp: 30, sp: 12, atk: 7, def: 5, spd: 4, crit: 0.05 },
+		rogue:   { name: 'Rogue',   hp: 20, sp: 20, atk: 6, def: 2, spd: 8, crit: 0.12 },
+		mage:    { name: 'Mage',    hp: 16, sp: 32, atk: 4, def: 1, spd: 5, crit: 0.05, spell: 9 },
+		cleric:  { name: 'Cleric',  hp: 24, sp: 24, atk: 5, def: 4, spd: 4, crit: 0.05 },
+		ranger:  { name: 'Ranger',  hp: 22, sp: 20, atk: 6, def: 3, spd: 7, crit: 0.05 },
+		monk:    { name: 'Monk',    hp: 22, sp: 20, atk: 5, def: 3, spd: 9, crit: 0.05 },
 	},
 
 	// Bestiary at level 1 (design 3.5). Behaviour flags:
@@ -817,7 +819,7 @@ class DungeonGame {
 		if (refusal) return { ok: false, reason: refusal };
 		++f.round;
 		this.guarding = letter == 'G';
-		if (this.guarding) this.sp = Math.min(this.stats.maxSp, this.sp + 1);
+		if (this.guarding) this.sp = Math.min(this.stats.maxSp, this.sp + this.content.guardSp);
 		const heroFirst = (f.round == 1 && f.firstStrike) || this.stats.spd >= m.spd;
 		const heroActs = () => {
 			if (letter == 'A') this.heroAttacks(m);
