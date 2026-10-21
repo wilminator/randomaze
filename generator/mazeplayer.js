@@ -89,7 +89,19 @@ class MazePlayer {
 		return result;
 	}
 
+	// Would this action do anything right now? It asks the same question tryAction answers but
+	// changes nothing, so the touch buttons can hide the moves that would only bump.
+	canAct(action) {
+		return !this.won && this.resolve(action, false) !== null;
+	}
+
 	tryAction(action) {
+		return this.resolve(action, true);
+	}
+
+	// The one place that knows what an action does. With commit false it only reports the
+	// result and leaves the player alone, so canAct and tryAction can never disagree.
+	resolve(action, commit) {
 		const cell = this.cell();
 		const dir = this.dir;
 		switch (action) {
@@ -100,47 +112,53 @@ class MazePlayer {
 							// Only the first try at a wrong entrance counts; after that it's a wall.
 							const wall = `${cell.loc}${dir}`;
 							if (this.fallenWalls.has(wall)) return null;
-							this.fallenWalls.add(wall);
+							if (commit) this.fallenWalls.add(wall);
 							return { type: 'trap' };
 						}
-						this.won = true;
+						if (commit) this.won = true;
 						return { type: 'win' };
 					}
-					this.x += dx[dir];
-					this.y += dy[dir];
+					if (commit) {
+						this.x += dx[dir];
+						this.y += dy[dir];
+					}
 					return { type: 'move' };
 				}
 				if (cell.data[dir] > 0 && this.keys.includes(cell.data[dir])) {
-					const next = this.maze.getNextCell(cell, dir);
-					this.openDoors.add(`${cell.loc}${dir}`);
-					this.openDoors.add(`${next.loc}${opposite[dir]}`);
+					if (commit) {
+						const next = this.maze.getNextCell(cell, dir);
+						this.openDoors.add(`${cell.loc}${dir}`);
+						this.openDoors.add(`${next.loc}${opposite[dir]}`);
+					}
 					return { type: 'door', key: cell.data[dir] };
 				}
 				return null;
 			case 'B': {
 				const back = opposite[dir];
 				if ((cell.data[back] === null && !this.isOutside(cell, back)) || (cell.data[back] > 0 && this.isDoorOpen(cell, back))) {
-					this.x -= dx[dir];
-					this.y -= dy[dir];
+					if (commit) {
+						this.x -= dx[dir];
+						this.y -= dy[dir];
+					}
 					return { type: 'move' };
 				}
 				return null;
 			}
 			case 'L':
-				this.dir = MazePlayer.turnLeft[dir];
+				if (commit) this.dir = MazePlayer.turnLeft[dir];
 				return { type: 'turn' };
 			case 'R':
-				this.dir = MazePlayer.turnRight[dir];
+				if (commit) this.dir = MazePlayer.turnRight[dir];
 				return { type: 'turn' };
 			case 'U':
 				if (this.z < this.maze.floors - 1 && cell.data.U === null) {
-					++this.z;
+					if (commit) ++this.z;
 					return { type: 'move' };
 				}
 				return null;
 			case 'D':
 				if (this.z > 0 && cell.data.D === null) {
-					--this.z;
+					if (commit) --this.z;
 					return { type: 'move' };
 				}
 				return null;
