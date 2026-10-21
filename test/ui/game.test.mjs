@@ -502,6 +502,94 @@ test('animation speed is kept between a quarter and normal pace, and junk means 
 });
 
 /*
+High contrast mode. The look itself is css, so these tests read computed styles in a real browser:
+walls lose their picture and turn solid, and every key shares one color-and-pattern look with its door.
+*/
+test('high contrast turns walls solid and back again', async () => {
+	const { page, errors } = await openDemo('', gameScript(1, 5, 11));
+	const wall = () => page.evaluate(() => {
+		const style = getComputedStyle(document.querySelector('.tile[class*="wall_"]'));
+		return {image: style.backgroundImage, color: style.backgroundColor};
+	});
+	// gameScript's wall is `background: gray`, so it has no picture; give it one to prove the mode removes it.
+	await page.evaluate(() => {
+		for (const rule of game.mazehtml.styleSheet.cssRules) {
+			if (rule.selectorText && rule.selectorText.startsWith('.wall_')) rule.style.backgroundImage = 'linear-gradient(red, blue)';
+		}
+	});
+	assert.match((await wall()).image, /gradient/, 'the normal look has a picture');
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	assert.strictEqual(await page.evaluate(() => document.documentElement.classList.contains('highContrast')), true);
+	assert.deepStrictEqual(await wall(), {image: 'none', color: 'rgb(0, 0, 0)'}, 'walls are solid black');
+	const floor = await page.evaluate(() => getComputedStyle(document.querySelector('.floor:not(.outside)')).backgroundColor);
+	assert.strictEqual(floor, 'rgb(255, 255, 255)', 'floors are solid white');
+	await page.evaluate(() => game.mazehtml.setHighContrast(false));
+	assert.match((await wall()).image, /gradient/, 'turning it off brings the picture back');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('high contrast gives each lock its own color and pattern, shared by door and key', async () => {
+	const { page, errors } = await openDemo('', gameScript(3, 3, 19));
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	// The maze draws only some of its doors and keys on the floor shown, so read what is there.
+	const found = await page.evaluate(() => {
+		const look = style => `${style.backgroundColor}|${style.backgroundImage}`;
+		const doors = {}, keys = {};
+		for (const door of document.querySelectorAll('.door')) {
+			doors[door.className.match(/door_(\d+)/)[1]] = look(getComputedStyle(door));
+		}
+		for (const key of document.querySelectorAll('.item.key')) {
+			keys[key.className.match(/key_(\d+)/)[1]] = look(getComputedStyle(key, '::after'));
+		}
+		return {doors, keys};
+	});
+	const locks = {...found.doors, ...found.keys};
+	assert.ok(Object.keys(locks).length > 3, `the maze shows several locks (${Object.keys(locks).length})`);
+	for (const lock of Object.keys(found.doors).filter(n => n in found.keys)) {
+		assert.strictEqual(found.doors[lock], found.keys[lock], `lock ${lock}: door and key disc match`);
+	}
+	for (const look of Object.values(locks)) {
+		assert.notStrictEqual(look.split('|')[0], 'rgba(0, 0, 0, 0)', 'every lock has a color');
+	}
+	// Color or pattern tells locks apart: no two locks share both.
+	assert.strictEqual(new Set(Object.values(locks)).size, Object.keys(locks).length, 'every lock looks different');
+	// The look table itself: 20 locks all differ, and the 21st reuses the first.
+	const table = await page.evaluate(() => Array.from({length: 21}, (_, i) => { const l = highContrastLook(i + 2); return `${l.color}|${l.image}`; }));
+	assert.strictEqual(new Set(table.slice(0, 20)).size, 20);
+	assert.strictEqual(table[20], table[0]);
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('high contrast key letters show on the key and a keyless door stays plain', async () => {
+	const { page } = await openDemo('', gameScript(3, 3, 19, 4));
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	const info = await page.evaluate(() => {
+		const key = document.querySelector('.item.key');
+		const plain = document.querySelector('.door_1');
+		return {letters: getComputedStyle(key, '::after').content, label: key.dataset.initials, plain: plain && getComputedStyle(plain).backgroundImage};
+	});
+	assert.strictEqual(info.letters, `"${info.label}"`, 'the key shows its letters');
+	assert.strictEqual(info.plain, 'none', 'a plain door has no pattern');
+	await page.close();
+});
+
+test('high contrast redraws the map in black and white', async () => {
+	const { page } = await openDemo('', gameScript(1, 5, 11));
+	const cell = () => page.evaluate(() => {
+		const visited = game.maze.cellList.find(c => c.play.visited);
+		return getComputedStyle(visited.map[0]).backgroundColor;
+	});
+	assert.strictEqual(await cell(), 'rgb(255, 255, 255)');
+	await page.evaluate(() => game.mazehtml.setHighContrast(true));
+	assert.strictEqual(await cell(), 'rgb(0, 0, 0)');
+	await page.evaluate(() => game.mazehtml.setHighContrast(false));
+	assert.strictEqual(await cell(), 'rgb(255, 255, 255)');
+	await page.close();
+});
+
+/*
 A touch button is drawn only when pressing it would do something. Left and right always
 work. A hidden button still catches taps (it only stops being drawn), so a tap on a wall
 bumps as before.

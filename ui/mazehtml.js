@@ -39,6 +39,27 @@ const entranceClass = { 'E': 'fas fa-arrow-left', 'W': 'fas fa-arrow-right', 'N'
 const oneWayWallClass = { 'W': 'fas fa-arrow-left', 'E': 'fas fa-arrow-right', 'S': 'fas fa-arrow-down', 'N': 'fas fa-arrow-up' };
 const oneWayWallHtml = { 'W': '&#57909;', 'E': '&#57908;', 'S': '&#57907;', 'N': '&#57906;' };
 const stopPropagation = event=>event.stopImmediatePropagation();
+/*
+High contrast mode. Every key and its door share one look made of a color AND a pattern, so the
+pair can be matched without telling hues apart. The colors are the Okabe-Ito set, chosen to stay
+apart for the common kinds of color blindness, and all read clearly on black. Yellow and blue are
+left out: yellow outlines the walls, and blue is dim on black. After the colors run out, the next
+pattern starts, so 5 colors x 4 patterns give 20 looks before one repeats.
+*/
+const highContrastColors = ['#E69F00', '#56B4E9', '#009E73', '#CC79A7', '#D55E00'];
+const highContrastPatterns = [
+	{image: 'none', size: 'auto'},
+	{image: 'repeating-linear-gradient(45deg, #000 0 1.5vmin, transparent 1.5vmin 4vmin)', size: 'auto'},
+	{image: 'repeating-linear-gradient(0deg, #000 0 1.5vmin, transparent 1.5vmin 4vmin)', size: 'auto'},
+	{image: 'radial-gradient(circle, #000 0.9vmin, transparent 1vmin)', size: '4vmin 4vmin'},
+];
+// The look of lock number `key` (2 and up): {color, image, size}. Keyless doors are drawn plain.
+function highContrastLook(key) {
+	const n = key - 2;
+	const pattern = highContrastPatterns[Math.floor(n / highContrastColors.length) % highContrastPatterns.length];
+	return Object.assign({color: highContrastColors[n % highContrastColors.length]}, pattern);
+}
+
 const defaultDoorNew = (elem, key, text)=>{
 	const door = $('<div>').addClass(`door door_${key}`);
 	door.append($('<div>').addClass('doortitle').text(text));
@@ -335,6 +356,8 @@ class MazeHtml{
 		// Whether the on-screen touch buttons show: 'auto' (on a device with a touch screen),
 		// 'on' or 'off'. A page that offers a setting for it calls setTouchControls().
 		this.touchControls = 'auto';
+		// Whether the maze is drawn in solid contrasting colors instead of pictures. Change it with setHighContrast().
+		this.highContrast = false;
 		// This engine needs a script tag in the root html page.
 		// Find it. Assert if it can't be found.
 		this.styleSheet =  [...document.styleSheets].filter((x)=>x.href==null).pop();
@@ -527,10 +550,10 @@ class MazeHtml{
 					break;
 				case 0:
 				case 1:
-					color = openValue ? 'transparent none' : doors[wallValue].map;
+					color = openValue ? 'transparent none' : (this.highContrast ? (wallValue ? '3px #FFFFFF dashed' : '2px #FFFFFF solid') : doors[wallValue].map);
 					break;
 				default:					
-					color = openValue ? 'transparent none' : (this.keyList ? `2px ${this.keyList[wallValue].doorcolor} solid` : doors[wallValue].map);
+					color = openValue ? 'transparent none' : (this.keyList ? `${this.highContrast ? 3 : 2}px ${this.highContrast ? this.keyList[wallValue].hcColor : this.keyList[wallValue].doorcolor} solid` : doors[wallValue].map);
 					break;
 			}			
 			// Update the wall on the map.
@@ -578,7 +601,7 @@ class MazeHtml{
 	
 	renderMapCell(cell) {
 		if (this._debug || cell.play.visited) {
-			cell.map.html('&nbsp;').css('background-color','white').addClass('mapCell');
+			cell.map.html('&nbsp;').css('background-color', this.highContrast ? 'black' : 'white').addClass('mapCell');
 			for (const dir of ['N','S','E','W','U','D']) {
 				this.renderMapWall(cell, dir);
 				const nextCell = this.maze.getNextCell(cell, dir);
@@ -592,7 +615,7 @@ class MazeHtml{
 			}
 		}
 		else {
-			cell.map.html('&nbsp;').css({'background-color':'gray', 'border':'2px transparent none'}).removeClass().addClass('mapCell');
+			cell.map.html('&nbsp;').css({'background-color': this.highContrast ? '#444444' : 'gray', 'border':'2px transparent none'}).removeClass().addClass('mapCell');
 		}
 	}
 	
@@ -714,7 +737,7 @@ class MazeHtml{
 					// Add key
 					if (cell.data.item.key) {
 						//const elem = $('<div>').addClass('item key').css('filter',`hue-rotate(${cell.data.item.key * 24 - 48}deg)`);
-						const elem = $('<div>').addClass(`item key key_${cell.data.item.key}`);
+						const elem = $('<div>').addClass(`item key key_${cell.data.item.key}`).attr('data-initials', this.keyList[cell.data.item.key].initials);
 						contents.append(elem);
 					}
 				}
@@ -777,6 +800,20 @@ class MazeHtml{
 		this.touchControls = mode;
 		const show = mode == 'on' || (mode != 'off' && navigator.maxTouchPoints > 0);
 		$('#maze').toggleClass('touchOn', show);
+	}
+
+	/*
+	Draw the maze in solid, strongly contrasting colors instead of textured art (an accessibility
+	option). The stylesheet does the drawing: this only sets the class `highContrast` on the page,
+	which ui/css/maze.css and the per-key rules made in playGame() key off. It can be changed while
+	playing; the map is drawn again because it picks its colors in script.
+	*/
+	setHighContrast(on) {
+		this.highContrast = !!on;
+		document.documentElement.classList.toggle('highContrast', this.highContrast);
+		if (this.maze && this.maze.cellList.every(cell => cell.map)) {
+			this.renderMap();
+		}
 	}
 
 	generateGameUi(rootNodeId, helpFxn = null) {
@@ -929,6 +966,13 @@ PgDn Descend<br />
 			const door_name = `door_${key}`;
 			const door_css = this.styleSheet.insertRule(`.${door_name} {${door.css}}`);
 			this.cssRules[door_name] = this.styleSheet.cssRules[door_css];
+			if (key > 1) {
+				// The look high contrast mode gives this lock, its door, its key and its inventory icon.
+				const look = highContrastLook(key);
+				keyObj.hcColor = look.color;
+				const hc_css = this.styleSheet.insertRule(`.highContrast .${door_name}, .highContrast .key_${key}, .highContrast .inv_${key} {--hc-color: ${look.color}; --hc-image: ${look.image}; --hc-size: ${look.size};}`);
+				this.cssRules[`${door_name}_hc`] = this.styleSheet.cssRules[hc_css];
+			}
 			return door_name;
 		};
 		if (keyCells.length > shuffledKeys.length) {
@@ -1269,7 +1313,7 @@ PgDn Descend<br />
 					// Add the key to the player's inventory.
 					const key = nextCell.data.item.key;
 					const keyObj = localThis.keyList[key];					
-					const inv = $('<div>').addClass('inventory').text(keyObj.initials);
+					const inv = $('<div>').addClass(`inventory inv_${key}`).text(keyObj.initials);
 					inv.prepend($('<img>').addClass('inventory').attr('src',keyObj.invsrc)).attr('style',keyObj.css);
 					$('#inventory').append(inv);
 					// Display a notice.
@@ -1451,4 +1495,4 @@ PgDn Descend<br />
 			this.helpFxn(state);
 		}
 	}
-}
+}
