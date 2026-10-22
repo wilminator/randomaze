@@ -1,6 +1,6 @@
 # Inviting README with a demo GIF
 
-- **Pull request:** #
+- **Pull request:** #31
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code
 
