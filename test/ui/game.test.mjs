@@ -441,6 +441,30 @@ test('walls and floors come in loaded pairs, and a cell never mixes them up', as
 	await page.close();
 });
 
+test('only ground near the player carries its image, and the range can be changed', async () => {
+	const near = (script, range) => script.replace('mazehtml.playGame();', `${range === undefined ? '' : `mazehtml.textureRange = ${range};`} mazehtml.playGame();`);
+	// For every floor tile in view, its distance in cells from the start and whether it dropped its image.
+	const tiles = page => page.evaluate(() => {
+		const {maze} = game, [f, r, c] = maze.entranceList[0].cell.loc, out = [];
+		for (let y = 0; y < maze.rows; ++y) for (let x = 0; x < maze.columns; ++x) {
+			const html = maze.grid[f][y][x].html;
+			if (html.floor.css('display') == 'none') continue;
+			out.push({d: Math.max(Math.abs(x - c), Math.abs(y - r)), far: html.floor.hasClass('far') && html.ceiling.hasClass('far')});
+		}
+		return out;
+	});
+	const first = await openDemo('', near(lookScript(1, 11, 3, 3)));
+	assert.deepStrictEqual(first.errors, []);
+	const a = await tiles(first.page);
+	assert.ok(a.some(t => t.d <= 1) && a.some(t => t.d > 1), 'the view has near and far ground');
+	for (const t of a) assert.strictEqual(t.far, t.d > 1, `ground ${t.d} cells away`);
+	await first.page.close();
+	// A range of 99 textures everything in view.
+	const all = await openDemo('', near(lookScript(1, 11, 3, 3), 99));
+	assert.ok((await tiles(all.page)).every(t => !t.far));
+	await all.page.close();
+});
+
 test('with no floor or ceiling images they keep their plain colour', async () => {
 	const { page, errors } = await openDemo('', lookScript(1, 11, 0));
 	assert.deepStrictEqual(errors, []);

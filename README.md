@@ -109,6 +109,11 @@ mazehtml.loadLook({wall: 'brick', floor: 'flags'});   // allowed pairs; a wall o
 Load as many pairs as look good together; neighbouring regions avoid sharing a wall or floor.
 With no `loadLook` calls, every wall image goes with every floor image.
 
+Floor and ceiling images are drawn only on cells within `mazehtml.textureRange` steps of the
+player (default 1). Farther ground shows the plain `background-color` from the image's css, so
+give each floor image its average colour. A phone has little graphics memory, and when it runs out
+it drops tiles and even parts of the page; texturing every floor tile in view did exactly that.
+
 ## Images
 
 `ui/img/` holds the only images the UI loads by itself: the ladder and the player
