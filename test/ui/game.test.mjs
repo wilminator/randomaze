@@ -465,6 +465,26 @@ test('only ground near the player carries its image, and the range can be change
 	await all.page.close();
 });
 
+test('only cells you can see through openings are drawn', async () => {
+	const { page, errors } = await openDemo('', lookScript(1, 11, 3, 3));
+	assert.deepStrictEqual(errors, []);
+	const drawn = await page.evaluate(() => {
+		const {maze} = game, [f] = maze.entranceList[0].cell.loc;
+		const shown = el => el.css('display') != 'none';
+		let cells = 0, layers = 0, total = maze.rows * maze.columns * 6;
+		for (let y = 0; y < maze.rows; ++y) for (let x = 0; x < maze.columns; ++x) {
+			const html = maze.grid[f][y][x].html;
+			if (shown(html.floor)) ++cells;
+			layers += Object.values(html).filter(shown).length;
+		}
+		return {cells, layers, total, all: maze.rows * maze.columns};
+	});
+	assert.ok(drawn.cells > 0, 'something is drawn');
+	assert.ok(drawn.cells < drawn.all / 2, `${drawn.cells} of ${drawn.all} cells drawn`);
+	assert.ok(drawn.layers < drawn.total / 2, `${drawn.layers} of ${drawn.total} layers drawn`);
+	await page.close();
+});
+
 test('with no floor or ceiling images they keep their plain colour', async () => {
 	const { page, errors } = await openDemo('', lookScript(1, 11, 0));
 	assert.deepStrictEqual(errors, []);

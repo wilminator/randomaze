@@ -8,7 +8,7 @@ const vm = require('vm');
 // mazehtml.js is a browser script. Its top level only declares things, so it loads fine without a page.
 const ctx = vm.createContext({ console });
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../ui/mazehtml.js'), 'utf8'), ctx, { filename: 'mazehtml.js' });
-const { varietyRoll, varietyDeal, lookRegions, lookAssign, MazeHtml } = vm.runInContext('({varietyRoll, varietyDeal, lookRegions, lookAssign, MazeHtml})', ctx);
+const { varietyRoll, varietyDeal, lookRegions, lookAssign, visibleCells, MazeHtml } = vm.runInContext('({varietyRoll, varietyDeal, lookRegions, lookAssign, visibleCells, MazeHtml})', ctx);
 const { generate } = require('./helpers.js');
 
 
@@ -243,4 +243,52 @@ test('wallTile, floorTile and ceilingTile read the look of the cell\'s region', 
 	assert.strictEqual(m.ceilingTile(0, 0, 1), 'ceiling_q');
 	assert.strictEqual(m.wallTile(0, 1, 2), 'wall_b');
 	assert.strictEqual(m.floorTile(0, 0, 2), '');
+});
+
+
+const cellsOf = set => [...set].sort((a, b) => a - b);
+
+test('visibleCells: in an open room it sees every cell within the range, as steps', () => {
+	const maze = room(5, 5);
+	// Steps count along passages, so the corners of a diamond are reached but not cells 3 steps away at range 2.
+	assert.deepStrictEqual(cellsOf(visibleCells(maze, 0, 2, 2, 1)), [7, 11, 12, 13, 17]);
+	assert.strictEqual(visibleCells(maze, 0, 2, 2, 0).size, 1);
+	assert.strictEqual(visibleCells(maze, 0, 2, 2, 10).size, 25);
+});
+
+test('visibleCells: walls block the view, so a closed-off room is not drawn', () => {
+	const maze = handMaze(1, 4, [[0, 0, 'E'], [0, 2, 'E']]);   // wall between columns 1 and 2
+	assert.deepStrictEqual(cellsOf(visibleCells(maze, 0, 0, 0, 5)), [0, 1]);
+	assert.deepStrictEqual(cellsOf(visibleCells(maze, 0, 0, 3, 5)), [2, 3]);
+});
+
+test('visibleCells: a door blocks the view until it is opened, from either side', () => {
+	const maze = handMaze(1, 3, [[0, 0, 'E']], [[0, 1, 'E']]);
+	assert.deepStrictEqual(cellsOf(visibleCells(maze, 0, 0, 0, 5)), [0, 1]);
+	maze.grid[0][0][1].play = { E: true };
+	assert.deepStrictEqual(cellsOf(visibleCells(maze, 0, 0, 0, 5)), [0, 1, 2]);
+	// Opening it marks the cell on the other side too; either mark is enough.
+	delete maze.grid[0][0][1].play;
+	maze.grid[0][0][2].play = { W: true };
+	assert.deepStrictEqual(cellsOf(visibleCells(maze, 0, 0, 0, 5)), [0, 1, 2]);
+});
+
+test('visibleCells: a one-way wall is not an opening from the closed side', () => {
+	const maze = handMaze(1, 2, [[0, 0, 'E']]);
+	maze.grid[0][0][0].data.E = 0;     // only the east cell thinks it is open
+	assert.strictEqual(visibleCells(maze, 0, 0, 1, 5).size, 2);
+});
+
+test('visibleCells: on real mazes it is far smaller than the old square window and always includes the player', () => {
+	let seen = 0, square = 0;
+	for (const type of [0, 1, 2, 3]) for (let seed = 1; seed <= 3; ++seed) {
+		const { maze } = generate(type, seed);
+		for (let r = 0; r < maze.rows; r += 3) for (let c = 0; c < maze.columns; c += 3) {
+			const v = visibleCells(maze, 0, r, c, 5);
+			assert.ok(v.has(r * maze.columns + c));
+			seen += v.size;
+			square += (Math.min(maze.rows - 1, r + 5) - Math.max(0, r - 5) + 1) * (Math.min(maze.columns - 1, c + 5) - Math.max(0, c - 5) + 1);
+		}
+	}
+	assert.ok(seen < square / 2, `${seen} visible against ${square} in the square`);
 });
