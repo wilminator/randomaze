@@ -350,6 +350,11 @@ class MazeHtml{
 		// How big the look regions are, in cells (see lookRegions). A door-free area bigger than
 		// about `target` cells is cut into pieces; no cut piece is smaller than `min`.
 		this.regionSize = {target: 45, min: 12};
+		// Floor and ceiling images are drawn only on cells this many steps from the player or
+		// nearer (0 for just the cell you stand in). Farther cells keep the plain colour of their
+		// look. Every textured tile costs a phone's graphics memory, and a phone that runs out
+		// drops tiles and parts of the page. Set it to 99 to texture everything in view.
+		this.textureRange = 1;
 		// Prefix for the images this file loads itself (the map's player marker), relative to the page.
 		// The site serves img/ next to its pages; a page elsewhere sets this, e.g. '../ui/'.
 		this.assetRoot = '';
@@ -1105,7 +1110,12 @@ PgDn Descend<br />
 				const show = y >= cy - range && y <= cy + range;
 				for(var x = 0; x < maze.columns; ++x){
 					if (show &&  x >= cx - range && x <= cx + range) {
-						Object.values(maze.grid[cz][y][x].html).forEach(x => x.show());
+						const html = maze.grid[cz][y][x].html;
+						Object.values(html).forEach(x => x.show());
+						// Only the ground near the player carries its image (see textureRange).
+						const far = Math.max(Math.abs(x - cx), Math.abs(y - cy)) > localThis.textureRange;
+						html.floor.toggleClass('far', far);
+						html.ceiling.toggleClass('far', far);
 					}
 					else {
 						Object.values(maze.grid[cz][y][x].html).forEach(x => x.hide());
