@@ -324,6 +324,38 @@ function lookAssign(maze, regions, looks, seed) {
 	});
 }
 
+/*
+Which cells of a maze floor can be seen from a cell, as a Set of row * columns + column numbers. Only
+cells reached through openings within `range` steps count: walls block the view, and so does a
+door until it has been opened (`play[dir]` on the cell is set then). Everything else is not worth drawing: the walls of a cell you cannot
+see are behind other walls. The facing is ignored, so turning on the spot never changes the set.
+*/
+function visibleCells(maze, floor, row, column, range) {
+	const step = {N: [-1, 0], S: [1, 0], W: [0, -1], E: [0, 1]};
+	const opp = {N: 'S', S: 'N', W: 'E', E: 'W'};
+	const seen = new Set([row * maze.columns + column]);
+	const queue = [[row, column, 0]];
+	for (let k = 0; k < queue.length; ++k) {
+		const [r, c, d] = queue[k];
+		if (d >= range) continue;
+		const cell = maze.grid[floor][r][c];
+		for (const dir in step) {
+			const nr = r + step[dir][0], nc = c + step[dir][1];
+			if (nr < 0 || nc < 0 || nr >= maze.rows || nc >= maze.columns || seen.has(nr * maze.columns + nc)) continue;
+			const next = maze.grid[floor][nr][nc];
+			const here = cell.data[dir], there = next.data[opp[dir]];
+			// A door lets the eye through once it is open. A one-way wall is open from one side only.
+			const opened = cell.play && cell.play[dir] || next.play && next.play[opp[dir]];
+			const door = (typeof here == 'number' && here >= 1) || (typeof there == 'number' && there >= 1);
+			if (door ? opened : (here === null || there === null)) {
+				seen.add(nr * maze.columns + nc);
+				queue.push([nr, nc, d + 1]);
+			}
+		}
+	}
+	return seen;
+}
+
 // Which game action each key (or touch button, see playGame) stands for.
 const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D'};
 
@@ -1105,20 +1137,31 @@ PgDn Descend<br />
 		const localThis = this;
 		
 
-		function hideOutOfRangeCells(cx, cy, cz, range){
+		// Draws only the cells that can be seen from here (see visibleCells). Cells out of sight
+		// are hidden: every drawn wall, floor and ceiling costs a phone graphics memory.
+		// With cullBack, a wall that faces away from the player (a cell's wall on the player's own side
+		// of it) is hidden too: only its back could be seen. That is saved for when the player stands
+		// still, because a step passes through a doorway whose walls are still in front for half of it.
+		function hideOutOfRangeCells(cx, cy, cz, range, cullBack = false){
+			const visible = visibleCells(maze, cz, cy, cx, range);
 			for(var y = 0; y < maze.rows; ++y){
-				const show = y >= cy - range && y <= cy + range;
 				for(var x = 0; x < maze.columns; ++x){
-					if (show &&  x >= cx - range && x <= cx + range) {
-						const html = maze.grid[cz][y][x].html;
+					const html = maze.grid[cz][y][x].html;
+					if (visible.has(y * maze.columns + x)) {
 						Object.values(html).forEach(x => x.show());
+						if (cullBack) {
+							html.N.toggle(!(cy < y));
+							html.S.toggle(!(cy > y));
+							html.W.toggle(!(cx < x));
+							html.E.toggle(!(cx > x));
+						}
 						// Only the ground near the player carries its image (see textureRange).
 						const far = Math.max(Math.abs(x - cx), Math.abs(y - cy)) > localThis.textureRange;
 						html.floor.toggleClass('far', far);
 						html.ceiling.toggleClass('far', far);
 					}
 					else {
-						Object.values(maze.grid[cz][y][x].html).forEach(x => x.hide());
+						Object.values(html).forEach(x => x.hide());
 					}
 				}
 			}
@@ -1196,7 +1239,7 @@ PgDn Descend<br />
 					// Walk out through the exit.
 					pX += dx[pDir];
 					pY += dy[pDir];
-					hideOutOfRangeCells(pX, pY, pZ, viewRange);
+					// The player is outside the maze now, so what is drawn stays as it is.
 					mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
 					animationState = 'forward';
 					return false; // action in progress
@@ -1208,6 +1251,8 @@ PgDn Descend<br />
 					nextCell.play[opposite[pDir]] = true;
 					const anim = localThis.keyList[result.key].open;
 					openDoorFxns[anim].open(door, oDoor);
+					// What lies behind the door can be seen now.
+					hideOutOfRangeCells(pX, pY, pZ, viewRange, true);
 					// Open door
 					animationState = 'door';
 					// Play the sound
@@ -1264,6 +1309,8 @@ PgDn Descend<br />
 					// Also update for last cell.
 					lastCell = maze.getNextCell(nextCell, opposite[pDir]);
 					// No more animations.
+					// Standing still now, so the walls behind can go.
+					hideOutOfRangeCells(pX, pY, pZ, viewRange, true);
 					animationState = false;
 					break;
 				case 'backward':
@@ -1272,6 +1319,8 @@ PgDn Descend<br />
 					// Also update for last cell.
 					lastCell = maze.getNextCell(nextCell, pDir);
 					// No more animations.
+					// Standing still now, so the walls behind can go.
+					hideOutOfRangeCells(pX, pY, pZ, viewRange, true);
 					animationState = false;
 					break;
 				case 'left':
@@ -1289,7 +1338,7 @@ PgDn Descend<br />
 				case 'up2':
 					mapElement.empty().prepend(mapHtml[pZ]);
 					mazeTranslateElement.prepend(mazeHtml[pZ]);
-					hideOutOfRangeCells(pX, pY, pZ, viewRange);
+					hideOutOfRangeCells(pX, pY, pZ, viewRange, true);
 					mazeTranslateElement.css({'transition':`transform ease-out ${ms(1500)}`,'transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
 					animationState = 'up3';
 					// Play ladder sound
@@ -1310,7 +1359,7 @@ PgDn Descend<br />
 				case 'down2':
 					mapElement.empty().prepend(mapHtml[pZ]);
 					mazeTranslateElement.prepend(mazeHtml[pZ]);
-					hideOutOfRangeCells(pX, pY, pZ, viewRange);
+					hideOutOfRangeCells(pX, pY, pZ, viewRange, true);
 					mazeTranslateElement.css({'transition':`transform ease-out ${ms(1500)}`,'transform':`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`});
 					animationState = 'down3';
 					// Play ladder sound
@@ -1396,7 +1445,7 @@ PgDn Descend<br />
 		mazeTranslateElement.css('transform',`translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
 		mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
 		this.setItemHtmlRotation(pDeg);
-		hideOutOfRangeCells(pX, pY, pZ, viewRange);
+		hideOutOfRangeCells(pX, pY, pZ, viewRange, true);
 
 		// Clean up final map.
 		this.renderMap();
