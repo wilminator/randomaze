@@ -1,12 +1,22 @@
 # Randomaze
 
+[![Tests](https://github.com/wilminator/randomaze/actions/workflows/test.yml/badge.svg)](https://github.com/wilminator/randomaze/actions/workflows/test.yml)
+[![License: AGPL-3.0 with library exception](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20library%20exception-blue)](#license)
+
 A seeded random maze generator for multi-floor 3D mazes with keys, locked doors,
 ladders and one-way walls, plus the first-person browser UI that plays them.
+Plain JavaScript in the browser: no build step, no framework.
 
 This is the engine behind the game at [randomazegame.com](https://randomazegame.com).
 The same seed always builds the same maze, so everyone can play today's maze, or share a seed.
 
-![demo](demo/screenshot.png)
+![A run through a two-floor maze: picking up a key, climbing a ladder, and walking out the exit](demo/demo.gif)
+
+- **Every maze is winnable.** The generator walks each maze the way a player would and repairs any spot where you could get stuck.
+- **Same seed, same maze.** One number rebuilds the whole maze, so a server can replay a finished game move by move to check a score.
+- **Easy to make your own.** Load your own walls, floors, doors, keys and sounds. [BUILD-YOUR-OWN.md](BUILD-YOUR-OWN.md) walks you through it.
+
+[Play today's maze](https://randomazegame.com) · [Build your own](BUILD-YOUR-OWN.md) · [Contribute](CONTRIBUTING.md)
 
 ## Try it
 
@@ -16,9 +26,6 @@ Add `?type=2&seed=1234` to the address to pick a maze size (0 to 3) and a seed, 
 to add 10 plain (keyless) doors.
 Arrow keys walk and turn, Up opens a door you have the key for, and
 Page Up / Page Down climb ladders.
-
-Want to make your own game with it? [BUILD-YOUR-OWN.md](BUILD-YOUR-OWN.md) walks you through it,
-including how to run a local web server.
 
 ## What's here
 
