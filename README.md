@@ -17,6 +17,9 @@ to add 10 plain (keyless) doors.
 Arrow keys walk and turn, Up opens a door you have the key for, and
 Page Up / Page Down climb ladders.
 
+Want to make your own game with it? [BUILD-YOUR-OWN.md](BUILD-YOUR-OWN.md) walks you through it,
+including how to run a local web server.
+
 ## What's here
 
 | Folder | What it is | Needs |
@@ -143,6 +146,11 @@ git push origin v0.2.0
 
 Tags with a suffix, like `v0.3.0-beta.1`, are pre-releases. Sites that track the latest
 stable release skip them.
+
+## Contributing
+
+Contributions are welcome, from bug reports to new features. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for how to get set up and how contributions are used.
 
 ## Credits
 
