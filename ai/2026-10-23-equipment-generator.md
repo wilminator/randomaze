@@ -1,6 +1,6 @@
 # Equipment generator and naming
 
-- **Pull request:** #TBD (into `staging-combat`)
+- **Pull request:** #34 (into `staging-combat`)
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code
 
