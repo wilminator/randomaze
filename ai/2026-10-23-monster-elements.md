@@ -8,7 +8,7 @@
 ## What and why
 
 The combat design gives every monster an element and has gear and spells deal +25% or -25% damage by element
-(Fire > Frost > Earth > Storm > Fire, and Light +25% against Dark). This adds the data and the one helper
+(Fire > Frost > Earth > Storm > Fire, and Light and Dark +25% against each other, -25% against their own kind). This adds the data and the one helper
 other changes will call: `dungeonElementMultiplier(content, attacker, defender)` in `generator/dungeon.js`.
 Rules are in `DUNGEON_CONTENT.elements` (the loop, the 25% bonus, the names Light and Dark), so the balance
 work can tune them. Each species in `DUNGEON_CONTENT.monsters` has an `element` (default `neutral`), and a
@@ -24,7 +24,7 @@ neutral and unknown elements, tuning through content, every species has a known 
 
 ## What Mike did
 
-Set the element rules (the loop, plus Light against Dark with no downside) and left the open questions below
+Set the element rules (the loop, plus Light and Dark against each other) and left the open questions below
 undecided on purpose.
 
 ## Follow-up: band elements and armor (same PR)
@@ -38,7 +38,7 @@ Still unused in fights until heroes have gear.
 
 ## Look closely at
 
-Light monsters are still undecided. A board's band is taken from the band its monsters start in (`bandWidth` 4),
+Light is a band 5 element (in place of Dark; band 4 keeps Dark), and Light and Dark also appear off-element in every band. A board's band is taken from the band its monsters start in (`bandWidth` 4),
 so a Hard board past level 20 uses band 5. Armor pieces that help and hurt against the same attacker cancel one for one
 (Mike did not say; the other reading multiplies the two sides). Off-element monsters pick equally among the
 other elements (including Dark in bands 1-3).

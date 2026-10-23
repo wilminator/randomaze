@@ -32,13 +32,20 @@ test('Fire > Frost > Earth > Storm > Fire, spelled out', () => {
 	assert.strictEqual(mult('storm', 'fire'), 1.25);
 });
 
-test('Light is +25% against Dark and has no downside', () => {
+test('Light and Dark are +25% against each other and -25% against their own kind', () => {
 	assert.strictEqual(mult('light', 'dark'), 1.25);
-	assert.strictEqual(mult('dark', 'light'), 1);
-	assert.strictEqual(mult('light', 'fire'), 1);
-	assert.strictEqual(mult('fire', 'light'), 1);
-	assert.strictEqual(mult('dark', 'fire'), 1);
-	assert.strictEqual(mult('fire', 'dark'), 1);
+	assert.strictEqual(mult('dark', 'light'), 1.25);
+	assert.strictEqual(mult('light', 'light'), 0.75);
+	assert.strictEqual(mult('dark', 'dark'), 0.75);
+});
+
+test('Light and Dark have no relation to the four-element loop', () => {
+	for (const el of ['fire', 'frost', 'earth', 'storm']) {
+		for (const ld of ['light', 'dark']) {
+			assert.strictEqual(mult(ld, el), 1);
+			assert.strictEqual(mult(el, ld), 1);
+		}
+	}
 });
 
 test('neutral, missing and unknown elements change nothing', () => {
@@ -86,9 +93,12 @@ test('armor: unrelated, neutral and empty pieces count for nothing, good and wea
 	near(armor(['frost', 'frost', 'storm'], 'earth'), 0.84);     // net one good piece
 });
 
-test('armor: Light armor counters Dark, Dark armor is not hurt by Light attackers', () => {
+test('armor: Light and Dark armor counter each other and are weak to their own kind', () => {
 	near(armor(['light'], 'dark'), 0.84);
-	assert.strictEqual(armor(['dark'], 'light'), 1);
+	near(armor(['dark'], 'light'), 0.84);
+	near(armor(['light', 'light'], 'light'), 1.294);
+	near(armor(['dark', 'dark', 'dark', 'dark'], 'dark'), 1.502);
+	near(armor(['light', 'dark'], 'dark'), 1);   // one counters, one is weak: they cancel
 });
 
 // ---- monster elements per band ----
@@ -107,13 +117,13 @@ test('undead are always Dark, in every band', () => {
 	}
 });
 
-test('band sets: the table from the design (band 1 Fire+Frost ... band 5 Fire+Earth+Dark)', () => {
+test('band sets: the table from the design (band 1 Fire+Frost ... band 5 Fire+Earth+Light)', () => {
 	const b = DUNGEON_CONTENT.bandElements;
 	assert.deepStrictEqual(plainList(b[1]), ['fire', 'frost']);
 	assert.deepStrictEqual(plainList(b[2]), ['earth', 'storm']);
 	assert.deepStrictEqual(plainList(b[3]), ['fire', 'earth']);
 	assert.deepStrictEqual(plainList(b[4]), ['frost', 'storm', 'dark']);
-	assert.deepStrictEqual(plainList(b[5]), ['fire', 'earth', 'dark']);
+	assert.deepStrictEqual(plainList(b[5]), ['fire', 'earth', 'light']);
 });
 function plainList(x) { return JSON.parse(JSON.stringify(x)); }
 
@@ -167,4 +177,18 @@ test('elements are the same for everyone on a board, differ between boards, and 
 	const a = new DungeonGame(maze, dungeon, hero(1), 'n1'), b = new DungeonGame(maze, dungeon, hero(1), 'n1');
 	assert.strictEqual(a.dice.rolls, 0);
 	assert.strictEqual(b.dice.rolls, 0);
+});
+
+test('Light and Dark monsters appear off-element in every band, and Light appears in band 5 as a band element', () => {
+	for (const first of [1, 5, 9, 13, 17]) {
+		const seen = new Set();
+		const content = { ...DUNGEON_CONTENT, offElementChance: { min: 0.5, max: 0.5 } };
+		for (let day = 202601018; day < 202601030; ++day) for (const m of elementsFor(day, first, content)) seen.add(m.element);
+		assert.ok(seen.has('light'), `band of level ${first} has Light`);
+		assert.ok(seen.has('dark'), `band of level ${first} has Dark`);
+	}
+	const band5 = new Set();
+	const none = { ...DUNGEON_CONTENT, offElementChance: { min: 0, max: 0 } };
+	for (let day = 202601018; day < 202601030; ++day) for (const m of elementsFor(day, 17, none)) band5.add(m.element);
+	assert.ok(band5.has('light'));
 });

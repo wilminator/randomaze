@@ -63,8 +63,8 @@ const DUNGEON_CONTENT = {
 	cellsPerTrap: { spikes: 40, dart: 60, alarm: 80 },
 	// Elements (design 3.5, equipment-naming.md). `loop` beats the NEXT one in the list and is beaten by
 	// the one before it (Fire > Frost > Earth > Storm > Fire). Hitting what you beat deals +bonus,
-	// hitting what beats you deals -bonus: one flat step, not scaled by tier. Light is always +bonus
-	// against Dark and has no downside. Neutral (or any other word) changes nothing. Nothing in a
+	// hitting what beats you deals -bonus: one flat step, not scaled by tier. Light and Dark are +bonus
+	// against each other and -bonus against their own kind. Neutral (or any other word) changes nothing. Nothing in a
 	// fight uses this yet: heroes and gear get elements in later changes, which call the helper.
 	// `bonus` is the weapon step (a weapon deals +-25%). `armorStep` is one armor piece's step (16%), and
 	// pieces compound: n pieces take 1 - (1 - armorStep)^n off the damage (16 / 29.4 / 40.7 / 50.2% for 1-4
@@ -80,14 +80,14 @@ const DUNGEON_CONTENT = {
 		2: ['earth', 'storm'],
 		3: ['fire', 'earth'],
 		4: ['frost', 'storm', 'dark'],
-		5: ['fire', 'earth', 'dark'],
+		5: ['fire', 'earth', 'light'],
 	},
 	// A monster's chance to take an element from outside its band's set, so elemental gear is not a free
 	// lunch (Mike, 2026-10-23: 5 to 15%, no guarantee). Each board draws its own chance in this range
 	// (min and max may be equal), then each monster rolls against it and picks equally among the other
 	// elements in `offElements`.
 	offElementChance: { min: 0.05, max: 0.15 },
-	offElements: ['fire', 'frost', 'earth', 'storm', 'dark'],
+	offElements: ['fire', 'frost', 'earth', 'storm', 'light', 'dark'],
 
 	// Which species may stand where. Tier 1 near the start, tier 3 deep.
 	tiers: { 1: ['rat', 'slime', 'bat'], 2: ['goblin', 'skeleton', 'spider'], 3: ['orc', 'wraith'] },
@@ -203,11 +203,13 @@ const clampNumber = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
 // The damage multiplier for a hit of element `attacker` on something of element `defender`:
 // 1 + bonus, 1 - bonus or 1. Order matters: Fire hitting Frost is 1.25, Frost hitting Fire is 0.75.
-// Light hitting Dark is 1.25; Dark hitting Light is 1 (Light has no downside). Anything else,
+// Light hitting Dark and Dark hitting Light are 1.25; Light on Light and Dark on Dark are 0.75. Anything else,
 // including neutral or a missing element, is 1. Gear and spells call this; it draws no dice.
 function dungeonElementMultiplier(content, attacker, defender) {
 	const { loop, bonus, light, dark } = content.elements;
-	if (attacker == light && defender == dark) return 1 + bonus;
+	// Light and Dark are each weak against their own kind and strong against the other (Mike, 2026-10-23).
+	if ((attacker == light && defender == dark) || (attacker == dark && defender == light)) return 1 + bonus;
+	if ((attacker == light || attacker == dark) && attacker == defender) return 1 - bonus;
 	const a = loop.indexOf(attacker), d = loop.indexOf(defender);
 	if (a < 0 || d < 0) return 1;
 	if (d == (a + 1) % loop.length) return 1 + bonus;
