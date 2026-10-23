@@ -61,6 +61,34 @@ const DUNGEON_CONTENT = {
 	minStartDistance: 3,      // no monster or trap this many steps (or fewer) from the start
 	bossMinCells: 450,        // the exit guardian only stands in mazes with at least this many cells
 	cellsPerTrap: { spikes: 40, dart: 60, alarm: 80 },
+	// Elements (design 3.5, equipment-naming.md). `loop` beats the NEXT one in the list and is beaten by
+	// the one before it (Fire > Frost > Earth > Storm > Fire). Hitting what you beat deals +bonus,
+	// hitting what beats you deals -bonus: one flat step, not scaled by tier. Light and Dark are +bonus
+	// against each other and -bonus against their own kind. Neutral (or any other word) changes nothing. Nothing in a
+	// fight uses this yet: heroes and gear get elements in later changes, which call the helper.
+	// `bonus` is the weapon step (a weapon deals +-25%). `armorStep` is one armor piece's step (16%), and
+	// pieces compound: n pieces take 1 - (1 - armorStep)^n off the damage (16 / 29.4 / 40.7 / 50.2% for 1-4
+	// pieces). A weak piece is the same adjustment with the opposite sign (four weak pieces: +50.2%).
+	elements: { loop: ['fire', 'frost', 'earth', 'storm'], bonus: 0.25, armorStep: 0.16, light: 'light', dark: 'dark' },
+
+	// Which elements a band's monsters roll from (Mike, 2026-10-23), by band number (1 = levels 1-4).
+	// A board's band is the one its monsters start in, so every player on a board meets the same elements.
+	// Bands 1-2 use neighbours in the loop (no mixed-blessing gear), 3 and up use an opposite pair.
+	bandWidth: 4,
+	bandElements: {
+		1: ['fire', 'frost'],
+		2: ['earth', 'storm'],
+		3: ['fire', 'earth'],
+		4: ['frost', 'storm', 'dark'],
+		5: ['fire', 'earth', 'light'],
+	},
+	// A monster's chance to take an element from outside its band's set, so elemental gear is not a free
+	// lunch (Mike, 2026-10-23: 5 to 15%, no guarantee). Each board draws its own chance in this range
+	// (min and max may be equal), then each monster rolls against it and picks equally among the other
+	// elements in `offElements`.
+	offElementChance: { min: 0.05, max: 0.15 },
+	offElements: ['fire', 'frost', 'earth', 'storm', 'light', 'dark'],
+
 	// Which species may stand where. Tier 1 near the start, tier 3 deep.
 	tiers: { 1: ['rat', 'slime', 'bat'], 2: ['goblin', 'skeleton', 'spider'], 3: ['orc', 'wraith'] },
 
@@ -129,15 +157,17 @@ const DUNGEON_CONTENT = {
 	//   opensPlain  can open plain (keyless) doors; passDoors: walks through any closed door
 	//   flees     breaks off a fight at low HP (once)
 	//   deadEnd   placed in dead ends;  pair: placed with a second one next to it
+	//   element   a fixed element for the species (skeleton and wraith are always dark). Without one, the
+	//             monster rolls from its band's set (`bandElements` above). Light monsters do not exist yet.
 	monsters: {
 		rat:      { tier: 1, hp: 5.4, atk: 2.7, def: 0, spd: 6, sight: 3, speed: 'normal', wanders: true,  leash: 4, pair: true },
 		slime:    { tier: 1, hp: 10.8, atk: 2.7, def: 2, spd: 1, sight: 2, speed: 'slow',   wanders: true,  leash: 3 },
 		bat:      { tier: 1, hp: 4.5, atk: 1.8, def: 0, spd: 9, sight: 5, speed: 'fast',   wanders: true,  leash: 6, erratic: 0.4 },
 		goblin:   { tier: 2, hp: 7.6, atk: 2.7, def: 2, spd: 5, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true, flees: true },
-		skeleton: { tier: 2, hp: 9.8, atk: 3.3, def: 4, spd: 3, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true },
+		skeleton: { tier: 2, element: 'dark', hp: 9.8, atk: 3.3, def: 4, spd: 3, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true },
 		spider:   { tier: 2, hp: 6.5, atk: 2.7, def: 1, spd: 7, sight: 4, speed: 'normal', wanders: false, leash: 0, deadEnd: true },
 		orc:      { tier: 3, hp: 12.7, atk: 3.6, def: 4, spd: 4, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true },
-		wraith:   { tier: 3, hp: 9.1, atk: 3.2, def: 6, spd: 6, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true, passDoors: true },
+		wraith:   { tier: 3, element: 'dark', hp: 9.1, atk: 3.2, def: 6, spd: 6, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true, passDoors: true },
 		guardian: { tier: 4, hp: 19.1, atk: 3.8, def: 6, spd: 5, sight: 4, speed: 'normal', wanders: false, leash: 2, boss: true },
 	},
 
@@ -170,6 +200,60 @@ class Dice {
 }
 
 const clampNumber = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+// The damage multiplier for a hit of element `attacker` on something of element `defender`:
+// 1 + bonus, 1 - bonus or 1. Order matters: Fire hitting Frost is 1.25, Frost hitting Fire is 0.75.
+// Light hitting Dark and Dark hitting Light are 1.25; Light on Light and Dark on Dark are 0.75. Anything else,
+// including neutral or a missing element, is 1. Gear and spells call this; it draws no dice.
+function dungeonElementMultiplier(content, attacker, defender) {
+	const { loop, bonus, light, dark } = content.elements;
+	// Light and Dark are each weak against their own kind and strong against the other (Mike, 2026-10-23).
+	if ((attacker == light && defender == dark) || (attacker == dark && defender == light)) return 1 + bonus;
+	if ((attacker == light || attacker == dark) && attacker == defender) return 1 - bonus;
+	const a = loop.indexOf(attacker), d = loop.indexOf(defender);
+	if (a < 0 || d < 0) return 1;
+	if (d == (a + 1) % loop.length) return 1 + bonus;
+	if (a == (d + 1) % loop.length) return 1 - bonus;
+	return 1;
+}
+
+// The damage multiplier for a monster's hit on a hero wearing `pieces` (the elements of the worn armor
+// pieces, e.g. ['fire', 'fire', null, 'frost']; null or neutral counts for nothing). A piece that counters
+// the attacker's element helps, a piece the attacker's element counters hurts, each by `armorStep`,
+// compounding: 1 piece 0.84, 2 pieces 0.7056 ... and a weakness mirrors it (1 piece 1.16, 4 pieces 1.502).
+// Helpful and weak pieces cancel one for one (a design call, flagged in the PR).
+function dungeonArmorMultiplier(content, pieces, attacker) {
+	let net = 0;
+	for (const piece of pieces) {
+		const m = dungeonElementMultiplier(content, piece, attacker);
+		if (m > 1) ++net; else if (m < 1) --net;
+	}
+	const reduction = 1 - (1 - content.elements.armorStep) ** Math.abs(net);
+	return net >= 0 ? 1 - reduction : 1 + reduction;
+}
+
+// A board's share of off-element monsters: one draw from `rng` in the content's min..max range.
+function dungeonOffElementChance(content, rng) {
+	const { min, max } = content.offElementChance;
+	return min + (max - min) * rng();
+}
+
+// The element a monster of `species` has on a board whose monsters start at level `first`. Fixed species
+// (the undead) keep theirs. Everyone else rolls from the band's set, with `offChance` (the board's share,
+// see dungeonOffElementChance) of an element from outside it. Draws from its own stream (not the dice), so the same board gives every player the
+// same elements: `rng` is a seeded stream the caller makes per board and uses once per monster, in order.
+function dungeonRollElement(content, species, first, rng, offChance) {
+	const spec = content.monsters[species];
+	const roll = rng(), pick = rng();
+	if (spec.element) return spec.element;
+	const band = clampNumber(Math.floor((Math.max(1, first) - 1) / content.bandWidth) + 1, 1, Object.keys(content.bandElements).length);
+	const set = content.bandElements[band];
+	if (roll < offChance) {
+		const others = content.offElements.filter(e => !set.includes(e));
+		return others[Math.floor(pick * others.length)];
+	}
+	return set[Math.floor(pick * set.length)];
+}
 
 // The hero's stats for a class at a level.
 function dungeonHeroStats(content, cls, level) {
@@ -461,11 +545,15 @@ class DungeonGame {
 
 		this.trapAt = new Map(dungeon.traps.map(t => [t.cell, t]));
 		this.occupied = new Map();
+		// Elements come from their own stream per board, so they never move the dice.
+		const elementRng = new Math.seedrandom(`${dungeon.seed}:elements:${hero.monsters.first}`);
+		const offChance = dungeonOffElementChance(content, elementRng);
 		this.monsters = dungeon.monsters.map(t => {
 			const level = dungeon.monsterLevel(t, hero.monsters.first, hero.monsters.width);
 			const s = dungeonMonsterStats(content, t.species, level);
 			const m = {
 				id: t.id, species: t.species, spec: content.monsters[t.species], level,
+				element: dungeonRollElement(content, t.species, hero.monsters.first, elementRng, offChance),
 				...s, hp: s.maxHp, cell: t.cell, home: t.cell,
 				xp: dungeonMonsterXp(content, t.species, level),
 				state: 'idle', target: null, lastDir: null, frozen: 0, searchLeft: 0, runLeft: 0,
