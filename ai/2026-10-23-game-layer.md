@@ -1,6 +1,6 @@
 # A frame for a game's own rules, holes, and a monster-hunt example
 
-- **Pull request:** #PR
+- **Pull request:** #37
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code
 
