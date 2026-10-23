@@ -1,6 +1,6 @@
 # Mage Bolt menu: choose an element
 
-- **Pull request:** #TBD (into `staging-combat`)
+- **Pull request:** #36 (into `staging-combat`)
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code
 
