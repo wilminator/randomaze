@@ -980,3 +980,18 @@ test('Bolt element: a record that gives a Warrior an element letter is invalid',
 	assert.strictEqual(result.valid, false);
 	assert.match(result.reason, /only the Mage knows the Bolt elements/);
 });
+
+// Needs dungeonElementMultiplier from the monster elements change; skipped until that is in this branch.
+const hasElementLoop = vm.runInContext("typeof dungeonElementMultiplier == 'function'", ctx);
+test('Bolt element: bolts use the element loop against the monster element', { skip: !hasElementLoop && 'monster elements are not in this branch yet' }, () => {
+	const cast = (monsterElement, letter) => {
+		const game = mageOrcFight();
+		game.monsters[0].element = monsterElement;
+		game.dice.queue.push(0.5);                 // base spell damage 9
+		run(game, letter);
+		return 28 - game.monsters[0].hp;
+	};
+	assert.strictEqual(cast('frost', '5'), 11, 'Fire beats Frost: 9 x 1.25');
+	assert.strictEqual(cast('fire', '6'), 7, 'Frost against Fire: 9 x 0.75');
+	assert.strictEqual(cast('neutral', '7'), 9, 'Neutral changes nothing');
+});

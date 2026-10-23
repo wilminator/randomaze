@@ -22,7 +22,7 @@ Actions (a run's record is one letter per action; see replayDungeon):
 	In a fight  A attack, G guard, X flee
 	Anywhere    I drink a potion; 1 uses the class's level 1 skill (see `skills` below). Both cost a
 	            tick outside a fight, and a round inside one (the monster still gets its swing).
-	Mage only   5 6 7 8 choose the Bolt element: Fire, Frost, Earth, Storm (see `elements` below; the
+	Mage only   5 6 7 8 choose the Bolt element: Fire, Frost, Earth, Storm (see `mageBolt` below; the
 	            letters are a placeholder until the backend agrees them). Out of a fight the choice only
 	            switches the element and costs a tick, no SP. In a fight it casts the bolt in that element
 	            as the round's action, at +50% SP when the element is not the current one.
@@ -119,7 +119,7 @@ const DUNGEON_CONTENT = {
 	// Dark belong to other classes). `letters` are the record letters for choosing each one: PLACEHOLDER, not yet
 	// agreed with the backend. `switchSpMult` makes a bolt in an element other than the current one cost that much
 	// more SP (rounded up: 4 -> 6). `start` is the element every run begins with; it carries over between fights.
-	elements: {
+	mageBolt: {
 		start: 'fire',
 		known: ['fire', 'frost', 'earth', 'storm'],
 		letters: { 5: 'fire', 6: 'frost', 7: 'earth', 8: 'storm' },
@@ -457,7 +457,7 @@ class DungeonGame {
 		this.prev = null;            // the cell the last 'move' came from, for fleeing
 		this.fight = null;           // {monster, round, firstStrike}
 		this.guarding = false;
-		this.element = content.elements.start;   // the Mage's current Bolt element; only the Mage ever changes it
+		this.element = content.mageBolt.start;   // the Mage's current Bolt element; only the Mage ever changes it
 		this.kills = 0;
 		this.xp = 0;                 // all kill XP this run
 		this.safeXp = 0;             // the share kept even on a death
@@ -876,7 +876,7 @@ class DungeonGame {
 			return { ok: false, reason: `${letter} is not an action` };
 		}
 		const f = this.fight, m = f.monster;
-		const refusal = letter == 'I' ? this.potionRefusal() : letter == '1' ? this.skillRefusal(true) : this.isElementLetter(letter) ? this.boltRefusal(this.content.elements.letters[letter]) : null;
+		const refusal = letter == 'I' ? this.potionRefusal() : letter == '1' ? this.skillRefusal(true) : this.isElementLetter(letter) ? this.boltRefusal(this.content.mageBolt.letters[letter]) : null;
 		if (refusal) return { ok: false, reason: refusal };
 		++f.round;
 		this.guarding = letter == 'G';
@@ -887,7 +887,7 @@ class DungeonGame {
 			else if (letter == 'X') this.heroFlees(m);
 			else if (letter == 'I') this.quaff();
 			else if (letter == '1') this.castSkill(m);
-			else if (this.isElementLetter(letter)) this.castBolt(m, this.content.elements.letters[letter]);
+			else if (this.isElementLetter(letter)) this.castBolt(m, this.content.mageBolt.letters[letter]);
 		};
 		const monsterActs = () => this.monsterAttacks(m);
 		if (heroFirst) {
@@ -1030,28 +1030,29 @@ class DungeonGame {
 	// ---- Mage Bolt elements (design 16) ----
 
 	isElementLetter(letter) {
-		return letter.length == 1 && Object.hasOwn(this.content.elements.letters, letter);
+		return letter.length == 1 && Object.hasOwn(this.content.mageBolt.letters, letter);
 	}
 
-	// How much more or less a bolt of `element` hurts monster `m`.
-	// PLACEHOLDER: the element loop and the +/-25% helper are being built in the "Combat elements in engine"
-	// thread. Until that lands every bolt does plain damage. Replace this body with a call to its helper.
+	// How much more or less a bolt of `element` hurts monster `m`: dungeonElementMultiplier from the element
+	// loop (monster elements PR). Until that is merged the function does not exist and every bolt is plain.
+	// TODO: drop the typeof guard once the element loop is in staging-combat.
 	elementMultiplier(element, m) {
-		return 1;
+		if (typeof dungeonElementMultiplier != 'function') return 1;
+		return dungeonElementMultiplier(this.content, element, m.element);
 	}
 
 	// SP a bolt of `element` costs: normal if it is the current element, else switchSpMult more, rounded up.
 	boltCost(element) {
 		const base = this.content.skills[this.hero.cls].sp;
-		return element == this.element ? base : Math.ceil(base * this.content.elements.switchSpMult);
+		return element == this.element ? base : Math.ceil(base * this.content.mageBolt.switchSpMult);
 	}
 
 	// Why this hero cannot choose `element` in a fight, or null.
 	boltRefusal(element) {
 		if (this.hero.cls != 'mage') return 'only the Mage knows the Bolt elements';
-		if (!this.content.elements.known.includes(element)) return `${element} is not known`;
+		if (!this.content.mageBolt.known.includes(element)) return `${element} is not known`;
 		const cost = this.boltCost(element);
-		if (this.sp < cost) return `not enough SP for ${this.content.elements.names[element]} (${cost})`;
+		if (this.sp < cost) return `not enough SP for ${this.content.mageBolt.names[element]} (${cost})`;
 		return null;
 	}
 
@@ -1067,9 +1068,9 @@ class DungeonGame {
 
 	// Out of a fight: the choice only switches the element, shows a message and costs one tick. No SP.
 	chooseElementExploring(letter) {
-		const element = this.content.elements.letters[letter];
+		const element = this.content.mageBolt.letters[letter];
 		if (this.hero.cls != 'mage') return { ok: false, reason: 'only the Mage knows the Bolt elements' };
-		if (!this.content.elements.known.includes(element)) return { ok: false, reason: `${element} is not known` };
+		if (!this.content.mageBolt.known.includes(element)) return { ok: false, reason: `${element} is not known` };
 		if (element == this.element) return { ok: false, reason: `the Bolt is already ${element}` };
 		this.element = element;
 		this.emit({ type: 'element', element });

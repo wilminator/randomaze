@@ -39,7 +39,7 @@ class BoltMenu {
 	}
 
 	get elements() {
-		return this.game.content.elements.known;
+		return this.game.content.mageBolt.known;
 	}
 
 	// Tapping "Bolt": show the element list with the cursor on the current element.
@@ -65,7 +65,7 @@ class BoltMenu {
 	entries() {
 		const game = this.game;
 		const inFight = !!game.fight;
-		const letters = game.content.elements.letters;
+		const letters = game.content.mageBolt.letters;
 		return this.elements.map(element => {
 			const letter = Object.keys(letters).find(l => letters[l] == element);
 			const current = element == game.element;
@@ -75,7 +75,7 @@ class BoltMenu {
 			return {
 				element, letter, current, cost,
 				...BOLT_LOOKS[element],
-				name: game.content.elements.names[element],
+				name: game.content.mageBolt.names[element],
 				// What the row says about the price.
 				note: inFight ? `${cost} SP${current ? '' : ' (switching)'}` : (current ? 'current' : 'switch, 1 tick, no SP'),
 				enabled: !refusal && (inFight || !current),
