@@ -61,7 +61,7 @@ class MazeParameters{
 
 		// Feature counts. Their numbers come from a second generator, never from `generator`
 		// above, so switching a feature on or off cannot shift any number drawn before it.
-		// 0 means none. Same field name staging-combat uses for the dungeon.
+		// 0 means none. The same field name buildMaze reads.
 		this.plainDoors = 0;
 		if (features && features.plainDoors === true) {
 			const featureBinom = generateBinomialDistributedIntegerWrapper(new Math.seedrandom(`${seed}:features`));
@@ -73,6 +73,11 @@ class MazeParameters{
 /*
 Builds the whole maze for some parameters: the one place that knows the steps and their order.
 The site, the server's replay and the demo all call this, so a feature applies everywhere at once.
+
+`params` does not have to come from MazeParameters. Any object with these fields works:
+mazeSeed, floors, columns, rows, doorTypes, entrances, oneWayWalls, and optionally plainDoors,
+holes and pits (counts; missing means 0). A page or server that wants its own maze sizes
+chooses the numbers itself and hands them in; the engine only builds what it is given.
 */
 function buildMaze(params) {
 	const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
@@ -81,6 +86,10 @@ function buildMaze(params) {
 	maze.generateDoors();
 	if (params.plainDoors > 0) {
 		maze.generatePlainDoors(params.plainDoors);
+	}
+	// Holes go in last (see Maze.generateHoles), so a maze without them is unchanged.
+	if (params.holes > 0) {
+		maze.generateHoles(params.holes, params.pits || 0);
 	}
 	return maze;
 }
