@@ -863,6 +863,7 @@ test('starting HP: Mage 70-80, Warrior 115, and no more than 45 between the lowe
 const mageOrcFight = () => {
 	const game = setup({ content: pinned(), monsters: [{ species: 'orc', col: 1 }], heroOver: { cls: 'mage' } });
 	run(game, 'F');                                // walks into the orc: first strike for the hero
+	game.monsters[0].element = 'neutral';          // so element damage never changes the numbers in the SP tests
 	return game;
 };
 
@@ -986,7 +987,7 @@ const hasElementLoop = vm.runInContext("typeof dungeonElementMultiplier == 'func
 test('Bolt element: bolts use the element loop against the monster element', { skip: !hasElementLoop && 'monster elements are not in this branch yet' }, () => {
 	const cast = (monsterElement, letter) => {
 		const game = mageOrcFight();
-		game.monsters[0].element = monsterElement;
+		game.monsters[0].element = monsterElement;   // overrides the neutral default
 		game.dice.queue.push(0.5);                 // base spell damage 9
 		run(game, letter);
 		return 28 - game.monsters[0].hp;
