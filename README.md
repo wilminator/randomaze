@@ -31,8 +31,9 @@ Page Up / Page Down climb ladders.
 
 | Folder | What it is | Needs |
 |---|---|---|
-| `generator/` | Builds the maze: layout, doors, keys, ladders, one-way walls, and the checks that keep every maze winnable. `mazeplayer.js` holds the rules of play, so a server can replay a game. Plain JavaScript, no DOM. | [seedrandom](https://github.com/davidbau/seedrandom) |
+| `generator/` | Builds the maze: layout, doors, keys, ladders, one-way walls, holes, and the checks that keep every maze winnable. `mazeplayer.js` holds the rules of play, so a server can replay a game. `gamelayer.js` is the frame for a game's own rules. Plain JavaScript, no DOM. | [seedrandom](https://github.com/davidbau/seedrandom) |
 | `ui/` | Draws a maze in 3D with CSS transforms, the map, the inventory, and handles play. `music.js` plays sounds; `title.js` is the colour-cycling title effect. | jQuery (slim is fine), seedrandom, [Font Awesome Free](https://fontawesome.com) icons |
+| `examples/` | A small complete ruleset built on `generator/gamelayer.js`: find and defeat a monster, with teleport pads. | |
 | `demo/` | A complete small game using only the files above. | |
 | `test/`, `tools/` | Generator tests, and a checker that builds thousands of mazes looking for crashes and traps. | Node 18+ |
 
@@ -81,6 +82,46 @@ type and seed and replay the game, without trusting the page's move count:
 const result = replayGame(maze, actions);
 // {valid: true, moves: 57}, or {valid: false, reason: 'action 12 (F) does nothing'}
 ```
+
+## Building a game on top: rules, things in the maze, teleporters
+
+Mazes and movement are the engine's job. If your game adds a world to the maze (monsters, pickups,
+teleporters, a clock), put that in a **ruleset**: a plain object whose parts the engine calls at the
+right moments. `generator/gamelayer.js` is the frame that runs it; the same frame runs in the
+browser and on a server that replays a finished game, so the two always agree.
+
+```js
+const rules = {
+	place(maze, seed, dice) { return [{ kind: 'gem', cell: maze.grid[0][2][3] }]; },   // what is in the maze
+	onArrive(game, action, result) {                // after every move: react to where the player is
+		const gem = game.contents.at(game.player.cell()).find(t => t.kind == 'gem');
+		if (gem) { game.contents.remove(gem); game.score = (game.score ?? 0) + 1; }
+	},
+	summary(game) { return { score: game.score ?? 0 }; },
+};
+const game = new RuleGame(maze, rules, {}, seed, nonce);
+game.act('F');                                      // one action letter at a time
+replayRun(maze, rules, {}, seed, nonce, actions);   // the server's check of a finished game
+```
+
+The parts a ruleset can have are listed at the top of `generator/gamelayer.js`: `place`, `start`,
+`allows`, `onArrive`, `onTick`, your own action letters in `actions`, and `summary`. The player is
+moved by the rules of the maze, and your rules can move it too with `game.moveTo(cell)`, which is
+how a teleporter works. `game.contents` holds what is in the maze (`spawn`, `remove`, `at`, `ofKind`),
+and `game.dice` is the seeded dice, drawn in the order actions happen.
+
+`examples/monsterhunt.js` is a small, complete example: one monster to find and defeat, a trophy that
+appears when it dies, and two teleport pads. Read it first.
+
+Two switches in `MazePlayer` help games like these. `new MazePlayer(maze, false, true)` allows the
+extra actions `C` (close the open door ahead) and `W` (wait); `TickLayer` counts a clock tick for the
+moves you choose. `maze.generateHoles(count, pits)` cuts one-way drops between floors, some of them
+hidden, always keeping the maze winnable.
+
+The numbers that shape a maze (size, doors, holes) are yours to choose. `buildMaze(params)` accepts
+any object with `mazeSeed`, `floors`, `columns`, `rows`, `doorTypes`, `entrances`, `oneWayWalls` and,
+if you like, `plainDoors`, `holes` and `pits`. `MazeParameters` is only the table the daily
+game uses.
 
 ## Using the UI
 
