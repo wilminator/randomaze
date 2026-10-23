@@ -855,3 +855,14 @@ test('starting HP: Mage 70-80, Warrior 115, and no more than 45 between the lowe
 	assert.deepStrictEqual(hp, { warrior: 115, rogue: 85, mage: 75, cleric: 93, ranger: 93, monk: 98 });
 	assert.ok(Math.max(...Object.values(hp)) - Math.min(...Object.values(hp)) <= 45);
 });
+
+test('hero growth: ATK 10%, DEF 5% and SPD 5% of base per level, crit flat', () => {
+	const at = (cls, level) => dungeonHeroStats(DUNGEON_CONTENT, cls, level);
+	const w1 = at('warrior', 1), w11 = at('warrior', 11);
+	assert.ok(Math.abs(w11.atk - w1.atk * 2) < 1e-9);
+	assert.ok(Math.abs(w11.def - w1.def * 1.5) < 1e-9);
+	assert.ok(Math.abs(w11.spd - w1.spd * 1.5) < 1e-9);
+	assert.strictEqual(w11.crit, w1.crit);
+	const m1 = at('mage', 1), m11 = at('mage', 11);
+	assert.ok(Math.abs(m11.spell - m1.spell * 2) < 1e-9);
+});
