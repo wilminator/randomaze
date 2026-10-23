@@ -82,9 +82,11 @@ const DUNGEON_CONTENT = {
 		4: ['frost', 'storm', 'dark'],
 		5: ['fire', 'earth', 'dark'],
 	},
-	// A monster's chance to take an element from outside its band's set, for variety (about 15%,
-	// not final). It picks equally among the other elements in `offElements`.
-	offElementChance: 0.15,
+	// A monster's chance to take an element from outside its band's set, so elemental gear is not a free
+	// lunch (Mike, 2026-10-23: 5 to 15%, no guarantee). Each board draws its own chance in this range
+	// (min and max may be equal), then each monster rolls against it and picks equally among the other
+	// elements in `offElements`.
+	offElementChance: { min: 0.05, max: 0.15 },
 	offElements: ['fire', 'frost', 'earth', 'storm', 'dark'],
 
 	// Which species may stand where. Tier 1 near the start, tier 3 deep.
@@ -228,17 +230,23 @@ function dungeonArmorMultiplier(content, pieces, attacker) {
 	return net >= 0 ? 1 - reduction : 1 + reduction;
 }
 
+// A board's share of off-element monsters: one draw from `rng` in the content's min..max range.
+function dungeonOffElementChance(content, rng) {
+	const { min, max } = content.offElementChance;
+	return min + (max - min) * rng();
+}
+
 // The element a monster of `species` has on a board whose monsters start at level `first`. Fixed species
-// (the undead) keep theirs. Everyone else rolls from the band's set, with a small chance of an element
-// from outside it. Draws from its own stream (not the dice), so the same board gives every player the
+// (the undead) keep theirs. Everyone else rolls from the band's set, with `offChance` (the board's share,
+// see dungeonOffElementChance) of an element from outside it. Draws from its own stream (not the dice), so the same board gives every player the
 // same elements: `rng` is a seeded stream the caller makes per board and uses once per monster, in order.
-function dungeonRollElement(content, species, first, rng) {
+function dungeonRollElement(content, species, first, rng, offChance) {
 	const spec = content.monsters[species];
 	const roll = rng(), pick = rng();
 	if (spec.element) return spec.element;
 	const band = clampNumber(Math.floor((Math.max(1, first) - 1) / content.bandWidth) + 1, 1, Object.keys(content.bandElements).length);
 	const set = content.bandElements[band];
-	if (roll < content.offElementChance) {
+	if (roll < offChance) {
 		const others = content.offElements.filter(e => !set.includes(e));
 		return others[Math.floor(pick * others.length)];
 	}
@@ -537,12 +545,13 @@ class DungeonGame {
 		this.occupied = new Map();
 		// Elements come from their own stream per board, so they never move the dice.
 		const elementRng = new Math.seedrandom(`${dungeon.seed}:elements:${hero.monsters.first}`);
+		const offChance = dungeonOffElementChance(content, elementRng);
 		this.monsters = dungeon.monsters.map(t => {
 			const level = dungeon.monsterLevel(t, hero.monsters.first, hero.monsters.width);
 			const s = dungeonMonsterStats(content, t.species, level);
 			const m = {
 				id: t.id, species: t.species, spec: content.monsters[t.species], level,
-				element: dungeonRollElement(content, t.species, hero.monsters.first, elementRng),
+				element: dungeonRollElement(content, t.species, hero.monsters.first, elementRng, offChance),
 				...s, hp: s.maxHp, cell: t.cell, home: t.cell,
 				xp: dungeonMonsterXp(content, t.species, level),
 				state: 'idle', target: null, lastDir: null, frozen: 0, searchLeft: 0, runLeft: 0,

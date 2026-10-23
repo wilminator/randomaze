@@ -30,8 +30,8 @@ undecided on purpose.
 ## Follow-up: band elements and armor (same PR)
 
 Mike settled the open questions (2026-10-23, "Combat balance bot"): band 1 Fire+Frost, 2 Earth+Storm, 3 Fire+Earth,
-4 Frost+Storm+Dark, 5 Fire+Earth+Dark; skeleton and wraith always Dark; about 15% of monsters take an element from
-outside their band's set (not final). `dungeonRollElement` rolls each monster's element from its own seeded stream
+4 Frost+Storm+Dark, 5 Fire+Earth+Dark; skeleton and wraith always Dark; a random 5-15% of monsters (drawn per board, no guarantee) take an element from
+outside their band's set. `dungeonRollElement` rolls each monster's element from its own seeded stream
 `${seed}:elements:${first}`, so every player on a board sees the same elements and the dice are untouched.
 `dungeonArmorMultiplier` gives armor 16% per piece, compounding (16 / 29.4 / 40.7 / 50.2%), and a weakness mirrors it.
 Still unused in fights until heroes have gear.

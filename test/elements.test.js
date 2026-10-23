@@ -8,6 +8,7 @@ const DUNGEON_CONTENT = vm.runInContext('DUNGEON_CONTENT', ctx);
 const dungeonElementMultiplier = vm.runInContext('dungeonElementMultiplier', ctx);
 const dungeonArmorMultiplier = vm.runInContext('dungeonArmorMultiplier', ctx);
 const dungeonRollElement = vm.runInContext('dungeonRollElement', ctx);
+const dungeonOffElementChance = vm.runInContext('dungeonOffElementChance', ctx);
 const buildDungeon = vm.runInContext('buildDungeon', ctx);
 const DungeonGame = vm.runInContext('DungeonGame', ctx);
 
@@ -117,7 +118,7 @@ test('band sets: the table from the design (band 1 Fire+Frost ... band 5 Fire+Ea
 function plainList(x) { return JSON.parse(JSON.stringify(x)); }
 
 test('with no off-element chance every non-undead monster has an element of its band', () => {
-	const content = { ...DUNGEON_CONTENT, offElementChance: 0 };
+	const content = { ...DUNGEON_CONTENT, offElementChance: { min: 0, max: 0 } };
 	const bands = { 1: 1, 4: 1, 5: 2, 8: 2, 9: 3, 12: 3, 13: 4, 16: 4, 17: 5, 20: 5, 30: 5 };   // first level -> band
 	for (const [first, band] of Object.entries(bands)) {
 		const set = DUNGEON_CONTENT.bandElements[band];
@@ -133,21 +134,28 @@ test('with no off-element chance every non-undead monster has an element of its 
 	}
 });
 
-test('about 15% of monsters are off-element, and an off-element one is outside the band set', () => {
+test('a board draws its off-element share between 5% and 15%, and not the same one every time', () => {
+	const shares = [];
+	for (let i = 0; i < 200; ++i) shares.push(dungeonOffElementChance(DUNGEON_CONTENT, seedrandom(`board${i}`)));
+	assert.ok(shares.every(x => x >= 0.05 && x < 0.15), 'shares in range');
+	assert.ok(Math.min(...shares) < 0.07 && Math.max(...shares) > 0.13, 'shares spread over the range');
+	const flat = { ...DUNGEON_CONTENT, offElementChance: { min: 0.1, max: 0.1 } };
+	assert.strictEqual(dungeonOffElementChance(flat, seedrandom('x')), 0.1);
+});
+
+test('monsters take an off-band element at the given share, outside the band set', () => {
 	const set = DUNGEON_CONTENT.bandElements[1];
-	let total = 0, off = 0;
-	const rng = seedrandom('off-element');
-	for (let i = 0; i < 20000; ++i) {
-		const e = dungeonRollElement(DUNGEON_CONTENT, 'goblin', 1, rng);
-		++total;
-		if (!set.includes(e)) ++off;
+	for (const chance of [0.05, 0.15]) {
+		let off = 0;
+		const rng = seedrandom(`off-${chance}`);
+		for (let i = 0; i < 20000; ++i) if (!set.includes(dungeonRollElement(DUNGEON_CONTENT, 'goblin', 1, rng, chance))) ++off;
+		assert.ok(Math.abs(off / 20000 - chance) < 0.012, `share ${off / 20000} for ${chance}`);
 	}
-	assert.ok(Math.abs(off / total - 0.15) < 0.015, `off-element share ${off / total}`);
 });
 
 test('a fixed element ignores the band and the chance, but still uses its two draws', () => {
 	const rng = seedrandom('x'), ref = seedrandom('x');
-	assert.strictEqual(dungeonRollElement(DUNGEON_CONTENT, 'skeleton', 1, rng), 'dark');
+	assert.strictEqual(dungeonRollElement(DUNGEON_CONTENT, 'skeleton', 1, rng, 0.15), 'dark');
 	ref(); ref();
 	assert.strictEqual(rng(), ref());
 });
