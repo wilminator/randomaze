@@ -850,12 +850,6 @@ test('a maze has 0 to 2 floor charms, away from holes, the start and each other'
 	assert.deepStrictEqual([...counts].sort(), [0, 1, 2], 'all three counts turn up over 60 days');
 });
 
-test('starting HP: Mage 70-80, Warrior 115, and no more than 45 between the lowest and the highest class', () => {
-	const hp = Object.fromEntries(Object.keys(DUNGEON_CONTENT.classes).map(c => [c, dungeonHeroStats(DUNGEON_CONTENT, c, 1).maxHp]));
-	assert.deepStrictEqual(hp, { warrior: 115, rogue: 85, mage: 75, cleric: 93, ranger: 93, monk: 98 });
-	assert.ok(Math.max(...Object.values(hp)) - Math.min(...Object.values(hp)) <= 45);
-});
-
 // ---------------------------------------------------------------- Mage Bolt elements (design 16)
 // Letters 5 6 7 8 choose Fire, Frost, Earth, Storm. Out of a fight a choice switches the element for a tick and no SP;
 // in a fight it casts a bolt in that element, 50% more SP when it is not the current element.
@@ -995,4 +989,10 @@ test('Bolt element: bolts use the element loop against the monster element', { s
 	assert.strictEqual(cast('frost', '5'), 11, 'Fire beats Frost: 9 x 1.25');
 	assert.strictEqual(cast('fire', '6'), 7, 'Frost against Fire: 9 x 0.75');
 	assert.strictEqual(cast('neutral', '7'), 9, 'Neutral changes nothing');
+});
+
+test('starting HP: Mage 70-80, Warrior 115, and no more than 45 between the lowest and the highest class', () => {
+	const hp = Object.fromEntries(Object.keys(DUNGEON_CONTENT.classes).map(c => [c, dungeonHeroStats(DUNGEON_CONTENT, c, 1).maxHp]));
+	assert.deepStrictEqual(hp, { warrior: 115, rogue: 85, mage: 75, cleric: 93, ranger: 93, monk: 98 });
+	assert.ok(Math.max(...Object.values(hp)) - Math.min(...Object.values(hp)) <= 45);
 });
