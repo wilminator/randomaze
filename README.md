@@ -74,7 +74,7 @@ const result = replayGame(maze, actions);
 
 ## The dungeon (monsters and fights)
 
-`generator/equipment.js` rolls and names gear (`rollItem`, `shopBonusItem`, `itemName`) from a dice function you pass in. It has no UI and the rung values in it are placeholders.
+`generator/equipment.js` rolls and names gear (`rollItem`, `shopBonusItem`, `itemName`) from a dice function you pass in. It has no UI.
 
 `generator/dungeon.js` is a layer on top of a finished maze: monsters that wander and chase,
 damage traps, and one-on-one fights. It is turn based (monsters act when you move) and every roll

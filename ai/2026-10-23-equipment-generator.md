@@ -24,7 +24,8 @@ Nothing yet. He wrote the design decisions this implements.
 
 ## Look closely at
 
-- **Rung values are placeholders** (`rungValues`): not decided, so they are simple 1-7 counts (health x5, SP x2).
+- **Rung values are Mike's (2026-10-23)**: rung N is +N attack, defense, speed and crit points, +4N health, +2N SP. **Power** (formerly spell power) is fixed at +5%, +10%, +15% and does not slide with tier; it rolls strength 1-3 with the tier 1 weights at every tier (my choice, the notes only say it is fixed).
+- Power also applies to skills and nudges odds, but this file only stores the number; using it is for the skills code.
 - Base names (Sword, Helm, Mail, Cloak, Shield; casters Staff, Hood, Robe, Cape, Bracer) are made up, and off-class gear is still undecided.
 - The element takes one of the 3 enchantment steps (as written in the naming doc), so an elemental item has at most 2 stat steps.
 - Naming ties (two stats on the same rung) go to the stat rolled first.

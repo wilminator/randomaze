@@ -133,6 +133,7 @@ test('rollItem: rungs stay inside the tier window (tier t draws from t to t+2), 
 		for (let s = 0; s < 400; ++s) {
 			const it = rollItem({ slot: 'weapon', tier, count: 3 }, seedrandom(`w${tier}:${s}`));
 			for (const en of it.enchantments) {
+				if (en.stat == 'power') continue;   // fixed: see the power test
 				assert.ok(en.rung >= tier && en.rung <= tier + 2, `tier ${tier} rolled rung ${en.rung}`);
 				assert.ok(EQ.stats.includes(en.stat));
 			}
@@ -193,7 +194,7 @@ test('shopBonusItem: 1 or 2 enchantments, band tier, repeatable per day, varies 
 		const total = it.enchantments.length + (it.element ? 1 : 0);
 		assert.ok(total == 1 || total == 2, `got ${total}`);
 		assert.strictEqual(it.tier, 3);
-		for (const en of it.enchantments) assert.ok(en.rung >= 3 && en.rung <= 5);
+		for (const en of it.enchantments.filter(x => x.stat != 'power')) assert.ok(en.rung >= 3 && en.rung <= 5);
 		assert.deepStrictEqual(it, shopBonusItem(20260100 + day, 3));
 		seen.add(itemName(it));
 		slots[it.slot] = (slots[it.slot] || 0) + 1;
@@ -224,7 +225,7 @@ test('itemName: the name shows the shape of the item', () => {
 	assert.strictEqual(itemName(item([e('attack', 5), e('attack', 3)], 'fire')), 'Savage Sword+ of the Salamander');
 	assert.strictEqual(itemName(item([e('defense', 2), e('health', 4)], 'storm')), 'Vigorous Grey Sword of the Eagle');
 	// The base changes with the item.
-	assert.strictEqual(itemName(item([e('spellPower', 7)], null, 'Staff')), 'Sublime Staff');
+	assert.strictEqual(itemName(item([e('power', 7)], null, 'Staff')), 'Sublime Staff');
 });
 
 test('itemName: ties go to the stat rolled first, and the result never has more than 3 words plus the base', () => {
@@ -243,7 +244,7 @@ test('every adjective, colour and creature is unique across stats and elements',
 	for (const s of EQ.stats) {
 		words.push(...EQ.words[s].adjectives, EQ.words[s].colour, EQ.words[s].creature);
 		assert.strictEqual(EQ.words[s].adjectives.length, 7);
-		assert.strictEqual(EQ.rungValues[s].length, 7);
+		assert.strictEqual(EQ.rungValues[s].length, s == 'power' ? 3 : 7);
 	}
 	for (const el of Object.values(EQ.elements)) words.push(el.creature);
 	assert.strictEqual(new Set(words).size, words.length);
@@ -266,4 +267,32 @@ test('items survive a JSON round trip unchanged', () => {
 		const it = rollItem({ slot: 'shield', tier: 1 + (s % 5), caster: s % 2 == 0 }, seedrandom(`j${s}`));
 		assert.deepStrictEqual(JSON.parse(JSON.stringify(it)), it);
 	}
+});
+
+test('rung values: rung N is +N attack, defense, speed and crit, +4N health, +2N sp', () => {
+	for (let n = 1; n <= 7; ++n) {
+		const totals = (stat) => plain(itemStats(item([e(stat, n)])))[stat];
+		for (const s of ['attack', 'defense', 'speed', 'crit']) assert.strictEqual(totals(s), n);
+		assert.strictEqual(totals('health'), 4 * n);
+		assert.strictEqual(totals('sp'), 2 * n);
+	}
+});
+
+test('power: fixed +5%, +10%, +15% at every tier, never above rung 3', () => {
+	const seen = {};
+	for (let tier = 1; tier <= 5; ++tier) {
+		for (let s = 0; s < 3000; ++s) {
+			const it = rollItem({ slot: 'weapon', tier: tier, caster: true, count: 3 }, seedrandom(`p${tier}:${s}`));
+			for (const en of it.enchantments.filter(x => x.stat == 'power')) {
+				assert.ok(en.rung >= 1 && en.rung <= 3, `tier ${tier} rolled power rung ${en.rung}`);
+				seen[`${tier}:${en.rung}`] = true;
+			}
+		}
+	}
+	// Every strength turns up at every tier (it does not slide).
+	for (let tier = 1; tier <= 5; ++tier) for (let r = 1; r <= 3; ++r) assert.ok(seen[`${tier}:${r}`], `tier ${tier} rung ${r}`);
+	assert.deepStrictEqual(plain(itemStats(item([e('power', 1), e('power', 3)]))).power, 0.05 + 0.15);
+	assert.deepStrictEqual(describeItem(item([e('power', 2)])), ['Potent: +10% power']);
+	// Power shows in the name like any stat.
+	assert.strictEqual(itemName(item([e('power', 3)])), 'Arcane Sword');
 });

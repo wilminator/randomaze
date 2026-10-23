@@ -17,7 +17,8 @@ An item is plain data (it round-trips through JSON):
 	element       null or 'fire' | 'frost' | 'earth' | 'storm' | 'light'
 
 The design is in equipment-naming.md and equipment-words.md (project notes). In short: 7 stats with an
-adjective ladder of 7 rungs each; a tier-t item draws its steps from rungs t to t+2 (the sliding window);
+adjective ladder of 7 rungs each; a tier-t item draws its steps from rungs t to t+2 (the sliding window), except
+power, which is fixed at rungs 1-3 (+5/10/15%);
 the name shows the shape of the item, not a list of it.
 
 Every number and word below is in EQUIPMENT_CONTENT, passed into everything, so the balance work can
@@ -27,7 +28,7 @@ RUNG VALUES (what each rung is worth in the game) are not decided at all: see `r
 
 const EQUIPMENT_CONTENT = {
 	// Stat ids in a fixed order (ties are broken by this order, so naming never depends on object key order).
-	stats: ['attack', 'defense', 'speed', 'health', 'sp', 'crit', 'spellPower'],
+	stats: ['attack', 'defense', 'speed', 'health', 'sp', 'crit', 'power'],
 
 	// Each stat: its 7 adjectives (rung 1 first), the colour it takes in second place, the creature it takes in third place.
 	words: {
@@ -37,21 +38,24 @@ const EQUIPMENT_CONTENT = {
 		health:     { adjectives: ['Healthy', 'Hale', 'Robust', 'Vigorous', 'Vital', 'Hearty', 'Everlasting'],         colour: 'Green',  creature: 'Ox' },
 		sp:         { adjectives: ['Calm', 'Clear', 'Lucid', 'Focused', 'Serene', 'Attuned', 'Transcendent'],          colour: 'Blue',   creature: 'Owl' },
 		crit:       { adjectives: ['Pointed', 'Precise', 'Deadly', 'Piercing', 'Lethal', 'Unerring', 'Fatal'],         colour: 'Black',  creature: 'Viper' },
-		spellPower: { adjectives: ['Charged', 'Potent', 'Arcane', 'Mystic', 'Empowered', 'Eldritch', 'Sublime'],       colour: 'Violet', creature: 'Raven' },
+		power: { adjectives: ['Charged', 'Potent', 'Arcane', 'Mystic', 'Empowered', 'Eldritch', 'Sublime'],       colour: 'Violet', creature: 'Raven' },
 	},
 
-	// PLACEHOLDER. What rung 1-7 is worth for each stat. The real values are not decided (Mike, 2026-10-22:
-	// "rung values are tuned later with the balance bot"). These are only here so the code has numbers to add up.
-	// Flat points for attack, defense, speed, health, sp, spell power; percentage points for crit.
+	// What each rung is worth (Mike, 2026-10-23). Rung N adds +N attack, defense and speed; health +4 and sp +2 per
+	// rung; crit +1 percentage point per rung. Power is different: it is a fixed percentage that does not slide with
+	// tier (like the elements), so it has only 3 strengths, +5%, +10% and +15%, and no rung above 3. It applies to
+	// every skill that damages or heals.
 	rungValues: {
-		attack:     [1, 2, 3, 4, 5, 6, 7],
-		defense:    [1, 2, 3, 4, 5, 6, 7],
-		speed:      [1, 2, 3, 4, 5, 6, 7],
-		health:     [5, 10, 15, 20, 25, 30, 35],
-		sp:         [2, 4, 6, 8, 10, 12, 14],
-		crit:       [1, 2, 3, 4, 5, 6, 7],
-		spellPower: [1, 2, 3, 4, 5, 6, 7],
+		attack:  [1, 2, 3, 4, 5, 6, 7],
+		defense: [1, 2, 3, 4, 5, 6, 7],
+		speed:   [1, 2, 3, 4, 5, 6, 7],
+		health:  [4, 8, 12, 16, 20, 24, 28],
+		sp:      [2, 4, 6, 8, 10, 12, 14],
+		crit:    [1, 2, 3, 4, 5, 6, 7],
+		power:   [0.05, 0.10, 0.15],
 	},
+	// Stats whose strength does not slide with tier: they roll strength 1-3 with the tier 1 weights at every tier.
+	fixedStats: ['power'],
 
 	// Elements. `beats` is the one it deals +25% to and takes 25% less from; light has no downside.
 	// The 25% itself lives in the damage helper (the elements thread); this file only hands out the id.
@@ -77,12 +81,12 @@ const EQUIPMENT_CONTENT = {
 	strengthTierShift: 6,
 	// Stat weights by gear kind. The four core stats never weigh less than 1, so every piece can roll them.
 	statWeights: {
-		weapon:       { attack: 5, defense: 1,   speed: 2, health: 1, sp: 1, crit: 3,   spellPower: 1 },
-		armor:        { attack: 1, defense: 5,   speed: 2, health: 4, sp: 1, crit: 1,   spellPower: 1 },
-		casterWeapon: { attack: 1, defense: 1,   speed: 2, health: 1, sp: 3, crit: 1,   spellPower: 4 },
-		casterArmor:  { attack: 1, defense: 2.5, speed: 2, health: 2, sp: 3, crit: 0.5, spellPower: 3 },
+		weapon:       { attack: 5, defense: 1,   speed: 2, health: 1, sp: 1, crit: 3,   power: 1 },
+		armor:        { attack: 1, defense: 5,   speed: 2, health: 4, sp: 1, crit: 1,   power: 1 },
+		casterWeapon: { attack: 1, defense: 1,   speed: 2, health: 1, sp: 3, crit: 1,   power: 4 },
+		casterArmor:  { attack: 1, defense: 2.5, speed: 2, health: 2, sp: 3, crit: 0.5, power: 3 },
 	},
-	coreStats: ['attack', 'defense', 'speed', 'spellPower'],
+	coreStats: ['attack', 'defense', 'speed', 'power'],
 	coreStatFloor: 1,
 
 	// The five slots. `base` is the plain item for a fighter's kit and `casterBase` for a caster's kit.
@@ -185,8 +189,11 @@ function rollItem(spec, rng, content = EQUIPMENT_CONTENT) {
 	const rungWeights = strengthWeights(tier, content);
 	for (let i = 0; i < statSteps; ++i) {
 		const stat = pickWeighted(statWeights, rng);
-		const offset = Number(pickWeighted({ 0: rungWeights[0], 1: rungWeights[1], 2: rungWeights[2] }, rng));
-		item.enchantments.push({ stat, rung: tier + offset });
+		// Fixed stats (power) ignore the tier: strength 1-3 from the tier 1 weights.
+		const fixed = content.fixedStats.includes(stat);
+		const w = fixed ? strengthWeights(1, content) : rungWeights;
+		const offset = Number(pickWeighted({ 0: w[0], 1: w[1], 2: w[2] }, rng));
+		item.enchantments.push({ stat, rung: (fixed ? 1 : tier) + offset });
 	}
 	return item;
 }
@@ -205,7 +212,8 @@ function shopBonusItem(daySeed, tier, caster = false, content = EQUIPMENT_CONTEN
 	return rollItem({ slot, tier, caster, count }, rng, content);
 }
 
-// The totals of an item's enchantments, using rungValues: {attack, defense, speed, health, sp, crit, spellPower}.
+// The totals of an item's enchantments, using rungValues: {attack, defense, speed, health, sp, crit, power}.
+// Power is a fraction (0.15 is +15%); the rest are points.
 function itemStats(item, content = EQUIPMENT_CONTENT) {
 	const totals = {};
 	for (const s of content.stats) totals[s] = 0;
@@ -258,7 +266,11 @@ function itemName(item, content = EQUIPMENT_CONTENT) {
 
 // Tooltip lines with the exact numbers, one per enchantment step plus the element.
 function describeItem(item, content = EQUIPMENT_CONTENT) {
-	const lines = item.enchantments.map(e => `${content.words[e.stat].adjectives[e.rung - 1]}: +${content.rungValues[e.stat][e.rung - 1]} ${e.stat}`);
+	const lines = item.enchantments.map(e => {
+		const v = content.rungValues[e.stat][e.rung - 1];
+		const amount = content.fixedStats.includes(e.stat) ? `${Math.round(v * 100)}%` : v;
+		return `${content.words[e.stat].adjectives[e.rung - 1]}: +${amount} ${e.stat}`;
+	});
 	if (item.element) lines.push(`Element: ${item.element}`);
 	return lines;
 }
