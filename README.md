@@ -28,7 +28,7 @@ Page Up / Page Down climb ladders.
 
 The files are classic browser scripts (no modules). Load them in this order:
 `generator/mazeutil.js`, `generator/mazegen.js`, `generator/mazeparams.js`,
-`generator/mazeplayer.js`, `generator/dungeon.js` (only for the dungeon game), then
+`generator/mazeplayer.js`, `generator/dungeon.js` and `generator/equipment.js` (only for the dungeon game), then
 `ui/music.js`, `ui/mazehtml.js`. `demo/index.html` shows the whole setup.
 
 ## Using the generator
@@ -73,6 +73,8 @@ const result = replayGame(maze, actions);
 ```
 
 ## The dungeon (monsters and fights)
+
+`generator/equipment.js` rolls and names gear (`rollItem`, `shopBonusItem`, `itemName`) from a dice function you pass in. It has no UI and the rung values in it are placeholders.
 
 `generator/dungeon.js` is a layer on top of a finished maze: monsters that wander and chase,
 damage traps, and one-on-one fights. It is turn based (monsters act when you move) and every roll
