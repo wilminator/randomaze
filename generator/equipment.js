@@ -67,6 +67,11 @@ const EQUIPMENT_CONTENT = {
 		light: { creature: 'Unicorn',    beats: 'dark',  losesTo: null },
 	},
 
+	// How strong an item's element is (Mike, 2026-10-23): a weapon's is 25%; each armor piece's is 16%, and the
+	// damage math compounds the four armor slots (1 - 0.84^n, so 50.2% for four) with the opposite sign for a weakness.
+	// That compounding is the damage code's job; here it is only each piece's own strength. Fixed at every tier.
+	elementStrength: { weapon: 0.25, armor: 0.16 },
+
 	// Weights (placeholders from equipment-words.md; tuned later).
 	// Number of enchantments on a drop at tier 1. `tierShift` moves that much weight per tier above 1
 	// from 0 enchantments to 3 enchantments (tier 5: 10 / 35 / 25 / 30).
@@ -273,4 +278,11 @@ function describeItem(item, content = EQUIPMENT_CONTENT) {
 	});
 	if (item.element) lines.push(`Element: ${item.element}`);
 	return lines;
+}
+
+// The strength of the item's element as a fraction (0.25 for a weapon, 0.16 for an armor piece), or 0 with no element.
+// Casters' staffs and robes count as weapon and armor. The same number applies as a weakness, with the opposite sign.
+function itemElementStrength(item, content = EQUIPMENT_CONTENT) {
+	if (!item.element) return 0;
+	return content.elementStrength[item.slot == 'weapon' ? 'weapon' : 'armor'];
 }

@@ -12,6 +12,7 @@ const plainItemIn = get('plainItem');
 const itemName = get('itemName');
 const itemStats = get('itemStats');
 const describeItem = get('describeItem');
+const itemElementStrength = get('itemElementStrength');
 const pickWeighted = get('pickWeighted');
 const enchantmentCountWeights = get('enchantmentCountWeights');
 const strengthWeights = get('strengthWeights');
@@ -295,4 +296,17 @@ test('power: fixed +5%, +10%, +15% at every tier, never above rung 3', () => {
 	assert.deepStrictEqual(describeItem(item([e('power', 2)])), ['Potent: +10% power']);
 	// Power shows in the name like any stat.
 	assert.strictEqual(itemName(item([e('power', 3)])), 'Arcane Sword');
+});
+
+test('element strength: weapons 25%, each armor piece 16% (casters too), none without an element', () => {
+	for (const slot of Object.keys(EQ.slots)) {
+		for (const caster of [false, true]) {
+			const plainOne = plainItem(slot, caster);
+			assert.strictEqual(itemElementStrength(plainOne), 0);
+			const withElement = { ...plainOne, element: 'fire' };
+			assert.strictEqual(itemElementStrength(withElement), slot == 'weapon' ? 0.25 : 0.16);
+		}
+	}
+	// Four armor pieces compound to the 50.2% in the design notes.
+	assert.ok(Math.abs((1 - (1 - 0.16) ** 4) - 0.502) < 0.001);
 });
