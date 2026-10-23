@@ -855,3 +855,128 @@ test('starting HP: Mage 70-80, Warrior 115, and no more than 45 between the lowe
 	assert.deepStrictEqual(hp, { warrior: 115, rogue: 85, mage: 75, cleric: 93, ranger: 93, monk: 98 });
 	assert.ok(Math.max(...Object.values(hp)) - Math.min(...Object.values(hp)) <= 45);
 });
+
+// ---------------------------------------------------------------- Mage Bolt elements (design 16)
+// Letters 5 6 7 8 choose Fire, Frost, Earth, Storm. Out of a fight a choice switches the element for a tick and no SP;
+// in a fight it casts a bolt in that element, 50% more SP when it is not the current element.
+
+const mageOrcFight = () => {
+	const game = setup({ content: pinned(), monsters: [{ species: 'orc', col: 1 }], heroOver: { cls: 'mage' } });
+	run(game, 'F');                                // walks into the orc: first strike for the hero
+	return game;
+};
+
+test('Bolt element: out of a fight a choice switches the element, costs a tick and no SP', () => {
+	const game = setup({ content: blind(), heroOver: { cls: 'mage' } });
+	assert.strictEqual(game.element, 'fire', 'a run starts on Fire');
+	const ticks = game.ticks, sp = game.sp;
+	const result = game.act('6');
+	assert.ok(result.ok);
+	assert.deepStrictEqual(plain(result.events), [{ type: 'element', element: 'frost' }]);
+	assert.strictEqual(game.element, 'frost');
+	assert.strictEqual(game.ticks, ticks + 1);
+	assert.strictEqual(game.sp, sp);
+	assert.strictEqual(game.actions, '6', 'the choice is its own recorded action');
+});
+
+test('Bolt element: choosing the element you already have is refused and changes nothing', () => {
+	const game = setup({ content: blind(), heroOver: { cls: 'mage' } });
+	const ticks = game.ticks;
+	assert.strictEqual(game.act('5').reason, 'the Bolt is already fire');
+	assert.strictEqual(game.ticks, ticks);
+	assert.strictEqual(game.actions, '');
+});
+
+test('Bolt element: in a fight a different element casts for 50% more SP (4 -> 6), the same again at normal cost', () => {
+	const game = mageOrcFight();
+	game.dice.queue.push(0.5);                     // spell 9 x 1.0 = 9 damage, no to-hit roll
+	const result = game.act('6');                  // Frost while the current element is Fire
+	assert.ok(result.ok);
+	assert.strictEqual(game.sp, 32 - 6);
+	assert.strictEqual(game.monsters[0].hp, 28 - 9);
+	assert.strictEqual(game.element, 'frost', 'the cast makes Frost the current element');
+	const skill = plain(result.events).find(e => e.type == 'skill');
+	assert.deepStrictEqual(skill, { type: 'skill', skill: 'firebolt', element: 'frost', cost: 6 });
+	run(game, '6');                                // Frost again
+	assert.strictEqual(game.sp, 32 - 6 - 4, 'the same element is normal cost');
+	assert.strictEqual(game.counts.skills, 2);
+});
+
+test('Bolt element: key 1 casts in the current element at normal cost', () => {
+	const game = mageOrcFight();
+	run(game, '7');                                // Earth, 6 SP
+	run(game, '1');
+	assert.strictEqual(game.sp, 32 - 6 - 4);
+	assert.strictEqual(game.element, 'earth');
+});
+
+test('Bolt element: not enough SP is refused using the real cost, and the same element still works', () => {
+	const game = mageOrcFight();
+	game.sp = 5;                                   // enough for a Firebolt (4), not for a switch (6)
+	assert.strictEqual(game.act('6').reason, 'not enough SP for Frostbolt (6)');
+	assert.strictEqual(game.sp, 5);
+	assert.strictEqual(game.element, 'fire');
+	assert.strictEqual(game.actions, 'F');
+	assert.ok(game.act('5').ok, 'Fire is the current element, so 4 SP is enough');
+	assert.strictEqual(game.sp, 1);
+});
+
+test('Bolt element: it carries over between fights, and a bolt out of a fight uses it', () => {
+	const game = setup({ content: blind(), monsters: [{ species: 'rat', col: 1 }, { species: 'rat', col: 4 }], heroOver: { cls: 'mage' } });
+	run(game, 'F');                                // first strike on the first rat
+	game.dice.queue.push(0.5);
+	run(game, '8');                                // Storm kills it (9 damage against 6 HP)
+	assert.strictEqual(game.fight, null, 'the fight is over');
+	assert.strictEqual(game.kills, 1);
+	assert.strictEqual(game.element, 'storm', 'the element survives the end of the fight');
+	run(game, 'FF');                               // now one cell from the second rat
+	game.dice.queue.push(0.5);
+	const result = game.act('1');                  // burns the next cell's rat with the current element
+	assert.ok(result.ok, result.reason);
+	assert.strictEqual(plain(result.events).find(e => e.type == 'hero-attack').element, 'storm');
+});
+
+test('Bolt element: only the Mage has the letters', () => {
+	for (const cls of ['warrior', 'rogue', 'cleric', 'ranger', 'monk']) {
+		const out = setup({ content: blind(), heroOver: { cls } });
+		assert.strictEqual(out.act('6').reason, 'only the Mage knows the Bolt elements', cls);
+		const fight = setup({ content: pinned(), monsters: [{ species: 'orc', col: 1 }], heroOver: { cls } });
+		run(fight, 'F');
+		assert.strictEqual(fight.act('6').reason, 'only the Mage knows the Bolt elements', cls);
+		assert.strictEqual(fight.sp, fight.stats.maxSp);
+	}
+});
+
+test('Bolt element: the damage multiplier is one seam, so the element loop can plug in', () => {
+	const game = mageOrcFight();
+	assert.strictEqual(game.elementMultiplier('fire', game.monsters[0]), 1, 'plain damage until the element loop lands');
+	game.elementMultiplier = () => 1.25;
+	game.dice.queue.push(0.5);                     // 9 x 1.25 = 11.25 -> 11
+	run(game, '5');
+	assert.strictEqual(game.monsters[0].hp, 28 - 11);
+});
+
+test('Bolt element: a run with element choices replays to the same result', () => {
+	const { maze, dungeon } = buildDungeon(202601018);
+	const mage = () => hero({ cls: 'mage', potions: [0.25] });
+	const live = new DungeonGame(maze, dungeon, mage(), 'n', {});
+	for (let i = 0; i < 800 && !live.outcome; ++i) {
+		const pick = '5678'[i % 4];
+		const wanted = live.fight ? (live.hp < live.stats.maxHp * 0.5 ? 'I' : i % 3 == 0 ? pick : 'A') : (i % 11 == 0 ? pick : botAction(live));
+		if (!live.act(wanted).ok) live.act(live.fight ? 'A' : botAction(live));
+	}
+	assert.ok(/[5-8]/.test(live.actions), 'the run used element letters');
+	assert.ok(live.outcome, 'the run ended');
+	const again = replayDungeon(maze, dungeon, mage(), 'n', live.actions);
+	assert.strictEqual(again.valid, true, again.reason);
+	assert.strictEqual(again.xp, live.xp);
+	assert.strictEqual(again.sp, live.sp);
+	assert.strictEqual(again.element, live.element);
+});
+
+test('Bolt element: a record that gives a Warrior an element letter is invalid', () => {
+	const { maze, dungeon } = buildDungeon(202601018);
+	const result = replayDungeon(maze, dungeon, hero({ cls: 'warrior' }), 'n', '5');
+	assert.strictEqual(result.valid, false);
+	assert.match(result.reason, /only the Mage knows the Bolt elements/);
+});

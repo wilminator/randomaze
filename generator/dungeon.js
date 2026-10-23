@@ -22,6 +22,10 @@ Actions (a run's record is one letter per action; see replayDungeon):
 	In a fight  A attack, G guard, X flee
 	Anywhere    I drink a potion; 1 uses the class's level 1 skill (see `skills` below). Both cost a
 	            tick outside a fight, and a round inside one (the monster still gets its swing).
+	Mage only   5 6 7 8 choose the Bolt element: Fire, Frost, Earth, Storm (see `elements` below; the
+	            letters are a placeholder until the backend agrees them). Out of a fight the choice only
+	            switches the element and costs a tick, no SP. In a fight it casts the bolt in that element
+	            as the round's action, at +50% SP when the element is not the current one.
 	Reserved    2-4 (later skills) are valid letters for later phases. For now they are refused.
 Fight actions are not ticks. The world is frozen while you fight. Only moves tick (the TickLayer
 policy in DUNGEON_CONTENT says which kinds), and monsters act on ticks.
@@ -109,6 +113,18 @@ const DUNGEON_CONTENT = {
 		cleric:  { name: 'Heal',         kind: 'heal',         sp: 8, heal: 0.4 },
 		ranger:  { name: 'Aimed Shot',   kind: 'aimed-shot',   sp: 4, mult: 1.5, range: 6 },
 		monk:    { name: 'Flurry',       kind: 'flurry',       sp: 6, mult: 0.5, hits: 3 },
+	},
+
+	// The Mage's Bolt elements (design 16, Mike 2026-10-22/23). The Mage knows all four from level 1 (Light and
+	// Dark belong to other classes). `letters` are the record letters for choosing each one: PLACEHOLDER, not yet
+	// agreed with the backend. `switchSpMult` makes a bolt in an element other than the current one cost that much
+	// more SP (rounded up: 4 -> 6). `start` is the element every run begins with; it carries over between fights.
+	elements: {
+		start: 'fire',
+		known: ['fire', 'frost', 'earth', 'storm'],
+		letters: { 5: 'fire', 6: 'frost', 7: 'earth', 8: 'storm' },
+		switchSpMult: 1.5,
+		names: { fire: 'Firebolt', frost: 'Frostbolt', earth: 'Earthbolt', storm: 'Stormbolt' },
 	},
 
 	// Heroes (design 7.1). `crit` is the chance of a critical hit.
@@ -441,6 +457,7 @@ class DungeonGame {
 		this.prev = null;            // the cell the last 'move' came from, for fleeing
 		this.fight = null;           // {monster, round, firstStrike}
 		this.guarding = false;
+		this.element = content.elements.start;   // the Mage's current Bolt element; only the Mage ever changes it
 		this.kills = 0;
 		this.xp = 0;                 // all kill XP this run
 		this.safeXp = 0;             // the share kept even on a death
@@ -501,6 +518,7 @@ class DungeonGame {
 	exploreAct(letter) {
 		if (letter == 'I') return this.drinkPotion();
 		if (letter == '1') return this.useSkillExploring();
+		if (this.isElementLetter(letter)) return this.chooseElementExploring(letter);
 		if (!'FBLRUDWC'.includes(letter) || letter.length != 1) {
 			if ('234'.includes(letter) && letter.length == 1) return { ok: false, reason: 'that skill is not available yet' };
 			if ('AGX'.includes(letter) && letter.length == 1) return { ok: false, reason: 'no fight in progress' };
@@ -852,13 +870,13 @@ class DungeonGame {
 
 	// One round: both sides act, the faster first (the hero on a tie, or on a first strike).
 	fightAct(letter) {
-		if (letter.length != 1 || !'AGXI1'.includes(letter)) {
+		if (letter.length != 1 || !('AGXI1'.includes(letter) || this.isElementLetter(letter))) {
 			if ('234'.includes(letter) && letter.length == 1) return { ok: false, reason: 'that skill is not available yet' };
 			if ('FBLRUDWC'.includes(letter) && letter.length == 1) return { ok: false, reason: 'you are in a fight' };
 			return { ok: false, reason: `${letter} is not an action` };
 		}
 		const f = this.fight, m = f.monster;
-		const refusal = letter == 'I' ? this.potionRefusal() : letter == '1' ? this.skillRefusal(true) : null;
+		const refusal = letter == 'I' ? this.potionRefusal() : letter == '1' ? this.skillRefusal(true) : this.isElementLetter(letter) ? this.boltRefusal(this.content.elements.letters[letter]) : null;
 		if (refusal) return { ok: false, reason: refusal };
 		++f.round;
 		this.guarding = letter == 'G';
@@ -869,6 +887,7 @@ class DungeonGame {
 			else if (letter == 'X') this.heroFlees(m);
 			else if (letter == 'I') this.quaff();
 			else if (letter == '1') this.castSkill(m);
+			else if (this.isElementLetter(letter)) this.castBolt(m, this.content.elements.letters[letter]);
 		};
 		const monsterActs = () => this.monsterAttacks(m);
 		if (heroFirst) {
@@ -992,7 +1011,7 @@ class DungeonGame {
 		++this.counts.skills;
 		this.emit({ type: 'skill', skill: k.kind });
 		if (k.kind == 'heal') this.healSelf(k);
-		else if (k.kind == 'firebolt') this.firebolt(m);
+		else if (k.kind == 'firebolt') this.firebolt(m, this.element);
 		else if (k.kind == 'flurry') {
 			for (let i = 0; i < k.hits && this.fight; ++i) this.heroAttacks(m, k.mult);
 		}
@@ -1000,11 +1019,62 @@ class DungeonGame {
 	}
 
 	// Spell damage ignores DEF and needs no to-hit roll.
-	firebolt(m) {
+	firebolt(m, element = this.element) {
 		++this.counts.attacks;
-		const damage = Math.max(1, Math.round(this.stats.spell * (0.85 + 0.3 * this.dice.next())));
-		this.emit({ type: 'hero-attack', monster: m.id, damage });
+		const roll = this.stats.spell * (0.85 + 0.3 * this.dice.next());
+		const damage = Math.max(1, Math.round(roll * this.elementMultiplier(element, m)));
+		this.emit({ type: 'hero-attack', monster: m.id, damage, element });
 		this.hitMonster(m, damage);
+	}
+
+	// ---- Mage Bolt elements (design 16) ----
+
+	isElementLetter(letter) {
+		return letter.length == 1 && Object.hasOwn(this.content.elements.letters, letter);
+	}
+
+	// How much more or less a bolt of `element` hurts monster `m`.
+	// PLACEHOLDER: the element loop and the +/-25% helper are being built in the "Combat elements in engine"
+	// thread. Until that lands every bolt does plain damage. Replace this body with a call to its helper.
+	elementMultiplier(element, m) {
+		return 1;
+	}
+
+	// SP a bolt of `element` costs: normal if it is the current element, else switchSpMult more, rounded up.
+	boltCost(element) {
+		const base = this.content.skills[this.hero.cls].sp;
+		return element == this.element ? base : Math.ceil(base * this.content.elements.switchSpMult);
+	}
+
+	// Why this hero cannot choose `element` in a fight, or null.
+	boltRefusal(element) {
+		if (this.hero.cls != 'mage') return 'only the Mage knows the Bolt elements';
+		if (!this.content.elements.known.includes(element)) return `${element} is not known`;
+		const cost = this.boltCost(element);
+		if (this.sp < cost) return `not enough SP for ${this.content.elements.names[element]} (${cost})`;
+		return null;
+	}
+
+	// In a fight: the choice is the round's action. It casts the bolt and the element becomes the current one.
+	castBolt(m, element) {
+		const cost = this.boltCost(element);
+		this.sp -= cost;
+		this.element = element;
+		++this.counts.skills;
+		this.emit({ type: 'skill', skill: 'firebolt', element, cost });
+		this.firebolt(m, element);
+	}
+
+	// Out of a fight: the choice only switches the element, shows a message and costs one tick. No SP.
+	chooseElementExploring(letter) {
+		const element = this.content.elements.letters[letter];
+		if (this.hero.cls != 'mage') return { ok: false, reason: 'only the Mage knows the Bolt elements' };
+		if (!this.content.elements.known.includes(element)) return { ok: false, reason: `${element} is not known` };
+		if (element == this.element) return { ok: false, reason: `the Bolt is already ${element}` };
+		this.element = element;
+		this.emit({ type: 'element', element });
+		this.player.onMove(letter, { type: 'skill' });
+		return { ok: true, type: 'skill' };
 	}
 
 	healSelf(k) {
@@ -1024,7 +1094,7 @@ class DungeonGame {
 		if (k.kind == 'heal') this.healSelf(k);
 		else if (k.kind == 'firebolt') {
 			const m = this.shotTarget(1);
-			this.firebolt(m);
+			this.firebolt(m, this.element);
 			if (m.alive) { m.state = 'chase'; m.target = this.playerCell(); }
 		}
 		else {
@@ -1106,6 +1176,7 @@ class DungeonGame {
 			endLevel: dungeonLevelForXp(this.hero.xpTable, this.hero.xp + grantedXp, this.content.maxLevel),
 			hp: this.hp,
 			sp: this.sp,
+			element: this.element,
 			potionsLeft: { found: this.bag.filter(x => x.found && !x.charm).length, carried: this.bag.filter(x => !x.found && !x.charm).length },
 			charmsLeft: this.bag.filter(x => x.charm).length,
 			stats: { ...this.counts, rolls: this.dice.rolls },
