@@ -17,6 +17,7 @@ const pickWeighted = get('pickWeighted');
 const enchantmentCountWeights = get('enchantmentCountWeights');
 const strengthWeights = get('strengthWeights');
 const statWeightsFor = get('statWeightsFor');
+const elementWeightsFor = get('elementWeightsFor');
 
 // Items come out of the engine's realm; copy them so deepStrictEqual can compare them.
 const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -108,7 +109,7 @@ test('rollItem: an element takes one of the steps, and an elemental drop leaves 
 	assert.strictEqual(it.enchantments.length, 0);
 	assert.strictEqual(itemName(it), 'Sword of the Salamander');
 	// count 3 with an element leaves two stat steps.
-	const three = rollItem({ slot: 'weapon', tier: 1 }, dice(0.99, 0.1, 0.8, 0, 0, 0, 0));
+	const three = rollItem({ slot: 'weapon', tier: 1 }, dice(0.99, 0.1, 0.92, 0, 0, 0, 0));
 	assert.strictEqual(three.element, 'light');
 	assert.strictEqual(three.enchantments.length, 2);
 });
@@ -168,9 +169,9 @@ test('rollItem: distribution matches the weights (counts, elements, stats by gea
 	}
 	// Tier 1 count weights 30/35/25/10, each within 2 points.
 	[30, 35, 25, 10].forEach((want, i) => assert.ok(Math.abs(counts[i] / N * 100 - want) < 2, `count ${i}: ${counts[i] / N * 100}`));
-	// Element chance 20% of drops with 1+; light is 12 of 112 of those.
+	// Element chance 20% of drops with 1+; light is 5 of 100 of those at tier 1.
 	assert.ok(Math.abs(withElement / eligible - 0.2) < 0.02);
-	assert.ok(Math.abs(light / withElement - 12 / 112) < 0.03);
+	assert.ok(Math.abs(light / withElement - 5 / 100) < 0.02);
 	// Weapons roll attack far more than defense; armor the other way round.
 	assert.ok(stat.weapon.attack > stat.weapon.defense * 3);
 	assert.ok(stat.armor.defense > stat.armor.attack * 3);
@@ -323,6 +324,24 @@ test('dark gear mirrors light gear: both exist, each beats the other and is weak
 		if (it.element) counts[it.element] = (counts[it.element] || 0) + 1;
 	}
 	assert.ok(counts.dark > 0 && counts.light > 0);
-	assert.ok(Math.abs(counts.dark / counts.light - 1) < 0.15, 'equal placeholder odds');
+	assert.ok(Math.abs(counts.dark / counts.light - 1) < 0.15, 'equal odds');
 	assert.strictEqual(itemName({ ...plainItem('weapon'), element: 'dark' }), 'Sword of the Nightmare');
+});
+
+test('element odds by tier: light and dark 5 each at tier 1 up to 25 each at tier 5, the loop elements share the rest', () => {
+	const want = { 1: [22.5, 5], 2: [20, 10], 3: [17.5, 15], 4: [15, 20], 5: [12.5, 25] };
+	for (const tier of [1, 2, 3, 4, 5]) {
+		const w = plain(elementWeightsFor(tier));
+		for (const el of ['fire', 'frost', 'earth', 'storm']) assert.strictEqual(w[el], want[tier][0]);
+		for (const el of ['light', 'dark']) assert.strictEqual(w[el], want[tier][1]);
+		assert.strictEqual(Object.values(w).reduce((a, b) => a + b), 100);
+	}
+	// Rolled drops follow it: tier 5 elements are light or dark half the time.
+	const rng = seedrandom('tier5elements');
+	let ld = 0, total = 0;
+	for (let i = 0; i < 20000; ++i) {
+		const it = rollItem({ slot: 'weapon', tier: 5, count: 1 }, rng);
+		if (it.element) { total += 1; if (it.element == 'light' || it.element == 'dark') ld += 1; }
+	}
+	assert.ok(Math.abs(ld / total - 0.5) < 0.03);
 });

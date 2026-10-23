@@ -82,8 +82,10 @@ const EQUIPMENT_CONTENT = {
 	countTierShift: 5,
 	// Chance that a drop with at least one enchantment spends one of them on an element, and which one.
 	elementChance: 0.2,
-	// Light and Dark odds are placeholders (their rarity is still open): 12 each.
-	elementWeights: { fire: 22, frost: 22, earth: 22, storm: 22, light: 12, dark: 12 },
+	// Which element (Mike, 2026-10-23). Light and Dark each weigh `base` at tier 1 and `perTier` more per tier above
+	// (5 each at tier 1, 25 each at tier 5); fire, frost, earth and storm share the rest of 100 equally (22.5 each at
+	// tier 1, 12.5 at tier 5).
+	elementWeights: { loop: ['fire', 'frost', 'earth', 'storm'], lightDark: ['light', 'dark'], base: 5, perTier: 5 },
 	// Which rung of the 3-rung window a step lands on (lowest, middle, highest) at tier 1. Each tier above 1
 	// moves `strengthTierShift` from the lowest to the highest (tier 5: 26 / 35 / 39).
 	strengthWeights: [50, 35, 15],
@@ -155,6 +157,17 @@ function enchantmentCountWeights(tier, content = EQUIPMENT_CONTENT) {
 	return w;
 }
 
+// Element weights at a tier, as {element: weight} adding up to 100.
+function elementWeightsFor(tier, content = EQUIPMENT_CONTENT) {
+	const w = content.elementWeights;
+	const special = w.base + w.perTier * (tier - 1);
+	const ordinary = (100 - special * w.lightDark.length) / w.loop.length;
+	const out = {};
+	for (const el of w.loop) out[el] = ordinary;
+	for (const el of w.lightDark) out[el] = special;
+	return out;
+}
+
 // Weights of the lowest, middle and highest rung of the window at this tier.
 function strengthWeights(tier, content = EQUIPMENT_CONTENT) {
 	const t = tier - 1;
@@ -191,7 +204,7 @@ function rollItem(spec, rng, content = EQUIPMENT_CONTENT) {
 	if (!Number.isInteger(count) || count < 0 || count > 3) throw new Error(`count must be 0-3, got ${count}`);
 	let statSteps = count;
 	if (count >= 1 && rng() < content.elementChance) {
-		item.element = pickWeighted(content.elementWeights, rng);
+		item.element = pickWeighted(elementWeightsFor(tier, content), rng);
 		statSteps -= 1;
 	}
 	const statWeights = statWeightsFor(item.kind, content);

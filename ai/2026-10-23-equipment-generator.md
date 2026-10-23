@@ -29,6 +29,6 @@ Nothing yet. He wrote the design decisions this implements.
 - Base names (Sword, Helm, Mail, Cloak, Shield; casters Staff, Hood, Robe, Cape, Bracer) are made up, and off-class gear is still undecided.
 - The element takes one of the 3 enchantment steps (as written in the naming doc), so an elemental item has at most 2 stat steps.
 - Naming ties (two stats on the same rung) go to the stat rolled first.
-- Element ids are lowercase strings (`fire`, `frost`, `earth`, `storm`, `light`, `dark`). Light and Dark gear mirror each other (each beats the other, weak to itself); Dark's creature (Nightmare) and the 12-each odds for Light and Dark are placeholders. The 25% damage multiplier is not here.
+- Element ids are lowercase strings (`fire`, `frost`, `earth`, `storm`, `light`, `dark`). Light and Dark gear mirror each other (each beats the other, weak to itself); Dark's creature (Nightmare) is a placeholder. Element odds (Mike, 2026-10-23): Light and Dark weigh 5 each at tier 1, rising by 5 per tier to 25 each at tier 5, and the four loop elements share the rest equally. Off-class gear stays plain (nothing here rolls it). The 25% damage multiplier is not here.
 - A caster and a fighter get different daily bonus items (the kit is part of the seed). The design does not say either way.
 - Element strength (`itemElementStrength`): 25% weapon, 16% per armor piece, as settled 2026-10-23. Compounding across the four armor slots and the weakness sign are the damage code's job, not this file's.
