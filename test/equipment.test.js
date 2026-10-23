@@ -108,7 +108,7 @@ test('rollItem: an element takes one of the steps, and an elemental drop leaves 
 	assert.strictEqual(it.enchantments.length, 0);
 	assert.strictEqual(itemName(it), 'Sword of the Salamander');
 	// count 3 with an element leaves two stat steps.
-	const three = rollItem({ slot: 'weapon', tier: 1 }, dice(0.99, 0.1, 0.999, 0, 0, 0, 0));
+	const three = rollItem({ slot: 'weapon', tier: 1 }, dice(0.99, 0.1, 0.8, 0, 0, 0, 0));
 	assert.strictEqual(three.element, 'light');
 	assert.strictEqual(three.enchantments.length, 2);
 });
@@ -168,9 +168,9 @@ test('rollItem: distribution matches the weights (counts, elements, stats by gea
 	}
 	// Tier 1 count weights 30/35/25/10, each within 2 points.
 	[30, 35, 25, 10].forEach((want, i) => assert.ok(Math.abs(counts[i] / N * 100 - want) < 2, `count ${i}: ${counts[i] / N * 100}`));
-	// Element chance 20% of drops with 1+; light is 12 of 100 of those.
+	// Element chance 20% of drops with 1+; light is 12 of 112 of those.
 	assert.ok(Math.abs(withElement / eligible - 0.2) < 0.02);
-	assert.ok(Math.abs(light / withElement - 0.12) < 0.03);
+	assert.ok(Math.abs(light / withElement - 12 / 112) < 0.03);
 	// Weapons roll attack far more than defense; armor the other way round.
 	assert.ok(stat.weapon.attack > stat.weapon.defense * 3);
 	assert.ok(stat.armor.defense > stat.armor.attack * 3);
@@ -309,4 +309,20 @@ test('element strength: weapons 25%, each armor piece 16% (casters too), none wi
 	}
 	// Four armor pieces compound to the 50.2% in the design notes.
 	assert.ok(Math.abs((1 - (1 - 0.16) ** 4) - 0.502) < 0.001);
+});
+
+test('dark gear mirrors light gear: both exist, each beats the other and is weak to itself', () => {
+	assert.strictEqual(EQ.elements.light.beats, 'dark');
+	assert.strictEqual(EQ.elements.dark.beats, 'light');
+	assert.strictEqual(EQ.elements.light.losesTo, 'light');
+	assert.strictEqual(EQ.elements.dark.losesTo, 'dark');
+	const rng = seedrandom('dark');
+	const counts = {};
+	for (let i = 0; i < 20000; ++i) {
+		const it = rollItem({ slot: 'weapon', tier: 1, count: 1 }, rng);
+		if (it.element) counts[it.element] = (counts[it.element] || 0) + 1;
+	}
+	assert.ok(counts.dark > 0 && counts.light > 0);
+	assert.ok(Math.abs(counts.dark / counts.light - 1) < 0.15, 'equal placeholder odds');
+	assert.strictEqual(itemName({ ...plainItem('weapon'), element: 'dark' }), 'Sword of the Nightmare');
 });

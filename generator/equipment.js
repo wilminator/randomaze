@@ -14,7 +14,7 @@ An item is plain data (it round-trips through JSON):
 	tier          1-5, one per monster band. It decides which rungs of each ladder the item can roll.
 	enchantments  0-3 steps in the order they were rolled. A stat may repeat. Element takes one step,
 	              so an item with an element has at most 2 stat steps.
-	element       null or 'fire' | 'frost' | 'earth' | 'storm' | 'light'
+	element       null or 'fire' | 'frost' | 'earth' | 'storm' | 'light' | 'dark'
 
 The design is in equipment-naming.md and equipment-words.md (project notes). In short: 7 stats with an
 adjective ladder of 7 rungs each; a tier-t item draws its steps from rungs t to t+2 (the sliding window), except
@@ -57,14 +57,17 @@ const EQUIPMENT_CONTENT = {
 	// Stats whose strength does not slide with tier: they roll strength 1-3 with the tier 1 weights at every tier.
 	fixedStats: ['power'],
 
-	// Elements. `beats` is the one it deals +25% to and takes 25% less from; light has no downside.
+	// Elements. `beats` is the one it deals +25% to and takes 25% less from; `losesTo` the one it does the opposite against.
 	// The 25% itself lives in the damage helper (the elements thread); this file only hands out the id.
 	elements: {
 		fire:  { creature: 'Salamander', beats: 'frost', losesTo: 'storm' },
 		frost: { creature: 'Yeti',       beats: 'earth', losesTo: 'fire' },
 		earth: { creature: 'Mole',       beats: 'storm', losesTo: 'frost' },
 		storm: { creature: 'Eagle',      beats: 'fire',  losesTo: 'earth' },
-		light: { creature: 'Unicorn',    beats: 'dark',  losesTo: null },
+		// Light and Dark gear mirror each other (Mike, 2026-10-23): each beats the other and is weak to its own.
+		// PLACEHOLDER creature for Dark: the notes name none yet.
+		light: { creature: 'Unicorn',    beats: 'dark',  losesTo: 'light' },
+		dark:  { creature: 'Nightmare',  beats: 'light', losesTo: 'dark' },
 	},
 
 	// How strong an item's element is (Mike, 2026-10-23): a weapon's is 25%; each armor piece's is 16%, and the
@@ -79,7 +82,8 @@ const EQUIPMENT_CONTENT = {
 	countTierShift: 5,
 	// Chance that a drop with at least one enchantment spends one of them on an element, and which one.
 	elementChance: 0.2,
-	elementWeights: { fire: 22, frost: 22, earth: 22, storm: 22, light: 12 },
+	// Light and Dark odds are placeholders (their rarity is still open): 12 each.
+	elementWeights: { fire: 22, frost: 22, earth: 22, storm: 22, light: 12, dark: 12 },
 	// Which rung of the 3-rung window a step lands on (lowest, middle, highest) at tier 1. Each tier above 1
 	// moves `strengthTierShift` from the lowest to the highest (tier 5: 26 / 35 / 39).
 	strengthWeights: [50, 35, 15],
