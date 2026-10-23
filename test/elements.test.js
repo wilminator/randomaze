@@ -1,10 +1,13 @@
 const test = require('node:test');
+const seedrandom = require('seedrandom');
 const assert = require('node:assert');
 const vm = require('vm');
 const { ctx } = require('./helpers.js');
 
 const DUNGEON_CONTENT = vm.runInContext('DUNGEON_CONTENT', ctx);
 const dungeonElementMultiplier = vm.runInContext('dungeonElementMultiplier', ctx);
+const dungeonArmorMultiplier = vm.runInContext('dungeonArmorMultiplier', ctx);
+const dungeonRollElement = vm.runInContext('dungeonRollElement', ctx);
 const buildDungeon = vm.runInContext('buildDungeon', ctx);
 const DungeonGame = vm.runInContext('DungeonGame', ctx);
 
@@ -54,23 +57,106 @@ test('the bonus comes from content, so the balance bot can tune it', () => {
 	assert.strictEqual(dungeonElementMultiplier(content, 'light', 'dark'), 1.5);
 });
 
-test('every species has a known element and none is Light yet', () => {
-	const known = new Set([...DUNGEON_CONTENT.elements.loop, 'dark', 'neutral']);
-	for (const [name, spec] of Object.entries(DUNGEON_CONTENT.monsters)) {
-		assert.ok(known.has(spec.element ?? 'neutral'), `${name} has element ${spec.element}`);
-		assert.notStrictEqual(spec.element, 'light', `${name} is Light`);
+const near = (a, b) => assert.ok(Math.abs(a - b) < 0.0006, `${a} is not ${b}`);
+const armor = (pieces, attacker) => dungeonArmorMultiplier(DUNGEON_CONTENT, pieces, attacker);
+
+test('armor: pieces that counter the attacker take 16 / 29.4 / 40.7 / 50.2% off, compounding', () => {
+	const counters = 'frost';          // Frost beats Earth, so Frost armor counters an Earth attacker
+	near(armor([counters], 'earth'), 0.84);
+	near(armor([counters, counters], 'earth'), 1 - 0.294);
+	near(armor([counters, counters, counters], 'earth'), 1 - 0.407);
+	near(armor([counters, counters, counters, counters], 'earth'), 1 - 0.502);
+});
+
+test('armor: a weakness mirrors it, four weak pieces take +50.2%, not +81%', () => {
+	const weak = 'earth';             // an Earth piece loses to a Frost attacker
+	near(armor([weak], 'frost'), 1.16);
+	near(armor([weak, weak], 'frost'), 1.294);
+	near(armor([weak, weak, weak], 'frost'), 1.407);
+	near(armor([weak, weak, weak, weak], 'frost'), 1.502);
+});
+
+test('armor: unrelated, neutral and empty pieces count for nothing, good and weak cancel', () => {
+	assert.strictEqual(armor([], 'fire'), 1);
+	assert.strictEqual(armor([null, 'neutral', undefined], 'fire'), 1);
+	assert.strictEqual(armor(['fire', 'fire'], 'earth'), 1);     // the opposite element: no relation
+	assert.strictEqual(armor(['fire'], 'fire'), 1);
+	assert.strictEqual(armor(['frost', 'storm'], 'earth'), 1);   // Frost counters Earth, Storm loses to Earth
+	near(armor(['frost', 'frost', 'storm'], 'earth'), 0.84);     // net one good piece
+});
+
+test('armor: Light armor counters Dark, Dark armor is not hurt by Light attackers', () => {
+	near(armor(['light'], 'dark'), 0.84);
+	assert.strictEqual(armor(['dark'], 'light'), 1);
+});
+
+// ---- monster elements per band ----
+
+const hero = (first) => ({ cls: 'warrior', level: 1, xp: 0, safeShare: 1, xpTable: DUNGEON_CONTENT.xpTable, monsters: { first, width: 0 } });
+const elementsFor = (daySeed, first, content = DUNGEON_CONTENT) => {
+	const { maze, dungeon } = buildDungeon(daySeed, content);
+	return new DungeonGame(maze, dungeon, hero(first), 'n1').monsters.map(m => ({ species: m.species, element: m.element }));
+};
+
+test('undead are always Dark, in every band', () => {
+	for (const first of [1, 5, 9, 13, 17]) {
+		for (const day of [202601018, 202601019, 202601020]) {
+			for (const m of elementsFor(day, first)) if (m.species == 'skeleton' || m.species == 'wraith') assert.strictEqual(m.element, 'dark');
+		}
 	}
 });
 
-test('monsters in a game carry their species element, neutral by default', () => {
-	const { maze, dungeon } = buildDungeon(202601018);
-	const hero = { cls: 'warrior', level: 1, xp: 0, safeShare: 1, xpTable: DUNGEON_CONTENT.xpTable, monsters: { first: 1, width: 0 } };
-	const game = new DungeonGame(maze, dungeon, hero, 'n1');
-	assert.ok(game.monsters.length > 0);
-	for (const m of game.monsters) assert.strictEqual(m.element, DUNGEON_CONTENT.monsters[m.species].element ?? 'neutral');
+test('band sets: the table from the design (band 1 Fire+Frost ... band 5 Fire+Earth+Dark)', () => {
+	const b = DUNGEON_CONTENT.bandElements;
+	assert.deepStrictEqual(plainList(b[1]), ['fire', 'frost']);
+	assert.deepStrictEqual(plainList(b[2]), ['earth', 'storm']);
+	assert.deepStrictEqual(plainList(b[3]), ['fire', 'earth']);
+	assert.deepStrictEqual(plainList(b[4]), ['frost', 'storm', 'dark']);
+	assert.deepStrictEqual(plainList(b[5]), ['fire', 'earth', 'dark']);
+});
+function plainList(x) { return JSON.parse(JSON.stringify(x)); }
 
-	const content = JSON.parse(JSON.stringify(DUNGEON_CONTENT));
-	delete content.monsters.rat.element;
-	const b2 = buildDungeon(202601018, content);
-	for (const m of new DungeonGame(b2.maze, b2.dungeon, hero, 'n1').monsters) if (m.species == 'rat') assert.strictEqual(m.element, 'neutral');
+test('with no off-element chance every non-undead monster has an element of its band', () => {
+	const content = { ...DUNGEON_CONTENT, offElementChance: 0 };
+	const bands = { 1: 1, 4: 1, 5: 2, 8: 2, 9: 3, 12: 3, 13: 4, 16: 4, 17: 5, 20: 5, 30: 5 };   // first level -> band
+	for (const [first, band] of Object.entries(bands)) {
+		const set = DUNGEON_CONTENT.bandElements[band];
+		const seen = new Set();
+		for (const day of [202601018, 202601019, 202601020, 202601021]) {
+			for (const m of elementsFor(day, Number(first), content)) {
+				if (m.species == 'skeleton' || m.species == 'wraith') continue;
+				assert.ok(set.includes(m.element), `level ${first} ${m.species} is ${m.element}`);
+				seen.add(m.element);
+			}
+		}
+		assert.deepStrictEqual([...seen].sort(), [...set].sort(), `every element of band ${band} shows up`);
+	}
+});
+
+test('about 15% of monsters are off-element, and an off-element one is outside the band set', () => {
+	const set = DUNGEON_CONTENT.bandElements[1];
+	let total = 0, off = 0;
+	const rng = seedrandom('off-element');
+	for (let i = 0; i < 20000; ++i) {
+		const e = dungeonRollElement(DUNGEON_CONTENT, 'goblin', 1, rng);
+		++total;
+		if (!set.includes(e)) ++off;
+	}
+	assert.ok(Math.abs(off / total - 0.15) < 0.015, `off-element share ${off / total}`);
+});
+
+test('a fixed element ignores the band and the chance, but still uses its two draws', () => {
+	const rng = seedrandom('x'), ref = seedrandom('x');
+	assert.strictEqual(dungeonRollElement(DUNGEON_CONTENT, 'skeleton', 1, rng), 'dark');
+	ref(); ref();
+	assert.strictEqual(rng(), ref());
+});
+
+test('elements are the same for everyone on a board, differ between boards, and never touch the dice', () => {
+	assert.deepStrictEqual(elementsFor(202601018, 5), elementsFor(202601018, 5));
+	assert.notDeepStrictEqual(elementsFor(202601018, 1).map(m => m.element), elementsFor(202601018, 9).map(m => m.element));
+	const { maze, dungeon } = buildDungeon(202601018);
+	const a = new DungeonGame(maze, dungeon, hero(1), 'n1'), b = new DungeonGame(maze, dungeon, hero(1), 'n1');
+	assert.strictEqual(a.dice.rolls, 0);
+	assert.strictEqual(b.dice.rolls, 0);
 });
