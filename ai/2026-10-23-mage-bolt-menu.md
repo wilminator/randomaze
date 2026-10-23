@@ -16,7 +16,7 @@ optional add-on that the core engine never loads (a test reads the core files an
 
 ## What the AI did
 
-Claude Code planned the change and wrote the code, the tests and this note: `DUNGEON_CONTENT.elements`, the element state and
+Claude Code planned the change and wrote the code, the tests and this note: `DUNGEON_CONTENT.mageBolt`, the element state and
 four new record letters in `DungeonGame`, `BoltMenu` (menu logic) and `renderBoltMenu` (drawing), and three test files.
 
 ## What Mike did
@@ -28,8 +28,9 @@ Set the rules in the design talk (2026-10-22/23). Reviews and merges.
 - **Placeholders.** The record letters `5 6 7 8` are mine, not agreed with the backend. The backend's action whitelist
   (`DUNGEON_ACTIONS` in `lambda/server/replay.mjs`) already accepts any digit, so it needs no change, but `1` still means
   "Bolt in the current element" and old records replay the same. The icon shapes and colours are text stand-ins until icon art exists.
-- **Element damage is not here yet.** `DungeonGame.elementMultiplier` returns 1. The element loop and the +/-25% helper come from the
-  "Combat elements in engine" work; when it lands, that one method calls its helper. Until then every bolt does the same damage.
+- **Element damage waits for PR #33.** `DungeonGame.elementMultiplier` calls `dungeonElementMultiplier` if it exists, else returns 1. The loop and the +/-25% helper come from the
+  "Combat elements in engine" work; once it is merged, a follow-up can drop the `typeof` guard. Until then every bolt does the same damage. My settings are
+  `mageBolt` (not `elements`) because that key is the element loop's. Trial-merged with #33 and #34: no conflicts, all tests pass.
 - **No game page uses the menu yet.** There is no combat UI in the engine, so this adds the add-on and its tests only. The page
   wires `new BoltMenu(game)`, `menu.open()` and `renderBoltMenu(menu, container, ...)` to its skill button, and can put
   `boltBadge()` on that button and `boltTint(element)` on the bolt.
