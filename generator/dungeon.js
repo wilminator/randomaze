@@ -61,6 +61,13 @@ const DUNGEON_CONTENT = {
 	minStartDistance: 3,      // no monster or trap this many steps (or fewer) from the start
 	bossMinCells: 450,        // the exit guardian only stands in mazes with at least this many cells
 	cellsPerTrap: { spikes: 40, dart: 60, alarm: 80 },
+	// Elements (design 3.5, equipment-naming.md). `loop` beats the NEXT one in the list and is beaten by
+	// the one before it (Fire > Frost > Earth > Storm > Fire). Hitting what you beat deals +bonus,
+	// hitting what beats you deals -bonus: one flat step, not scaled by tier. Light is always +bonus
+	// against Dark and has no downside. Neutral (or any other word) changes nothing. Nothing in a
+	// fight uses this yet: heroes and gear get elements in later changes, which call the helper.
+	elements: { loop: ['fire', 'frost', 'earth', 'storm'], bonus: 0.25, light: 'light', dark: 'dark' },
+
 	// Which species may stand where. Tier 1 near the start, tier 3 deep.
 	tiers: { 1: ['rat', 'slime', 'bat'], 2: ['goblin', 'skeleton', 'spider'], 3: ['orc', 'wraith'] },
 
@@ -129,16 +136,19 @@ const DUNGEON_CONTENT = {
 	//   opensPlain  can open plain (keyless) doors; passDoors: walks through any closed door
 	//   flees     breaks off a fight at low HP (once)
 	//   deadEnd   placed in dead ends;  pair: placed with a second one next to it
+	//   element   fire, frost, earth, storm, dark or neutral (default). PLACEHOLDER: which species carry
+	//             which element, and which elements each band features, are not decided yet. Light
+	//             monsters do not exist yet. See `elements` above and dungeonElementMultiplier.
 	monsters: {
-		rat:      { tier: 1, hp: 5.4, atk: 2.7, def: 0, spd: 6, sight: 3, speed: 'normal', wanders: true,  leash: 4, pair: true },
-		slime:    { tier: 1, hp: 10.8, atk: 2.7, def: 2, spd: 1, sight: 2, speed: 'slow',   wanders: true,  leash: 3 },
-		bat:      { tier: 1, hp: 4.5, atk: 1.8, def: 0, spd: 9, sight: 5, speed: 'fast',   wanders: true,  leash: 6, erratic: 0.4 },
-		goblin:   { tier: 2, hp: 7.6, atk: 2.7, def: 2, spd: 5, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true, flees: true },
-		skeleton: { tier: 2, hp: 9.8, atk: 3.3, def: 4, spd: 3, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true },
-		spider:   { tier: 2, hp: 6.5, atk: 2.7, def: 1, spd: 7, sight: 4, speed: 'normal', wanders: false, leash: 0, deadEnd: true },
-		orc:      { tier: 3, hp: 12.7, atk: 3.6, def: 4, spd: 4, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true },
-		wraith:   { tier: 3, hp: 9.1, atk: 3.2, def: 6, spd: 6, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true, passDoors: true },
-		guardian: { tier: 4, hp: 19.1, atk: 3.8, def: 6, spd: 5, sight: 4, speed: 'normal', wanders: false, leash: 2, boss: true },
+		rat:      { tier: 1, element: 'neutral', hp: 5.4, atk: 2.7, def: 0, spd: 6, sight: 3, speed: 'normal', wanders: true,  leash: 4, pair: true },
+		slime:    { tier: 1, element: 'earth', hp: 10.8, atk: 2.7, def: 2, spd: 1, sight: 2, speed: 'slow',   wanders: true,  leash: 3 },
+		bat:      { tier: 1, element: 'storm', hp: 4.5, atk: 1.8, def: 0, spd: 9, sight: 5, speed: 'fast',   wanders: true,  leash: 6, erratic: 0.4 },
+		goblin:   { tier: 2, element: 'fire', hp: 7.6, atk: 2.7, def: 2, spd: 5, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true, flees: true },
+		skeleton: { tier: 2, element: 'dark', hp: 9.8, atk: 3.3, def: 4, spd: 3, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true },
+		spider:   { tier: 2, element: 'earth', hp: 6.5, atk: 2.7, def: 1, spd: 7, sight: 4, speed: 'normal', wanders: false, leash: 0, deadEnd: true },
+		orc:      { tier: 3, element: 'fire', hp: 12.7, atk: 3.6, def: 4, spd: 4, sight: 5, speed: 'normal', wanders: true,  leash: 4, opensPlain: true },
+		wraith:   { tier: 3, element: 'dark', hp: 9.1, atk: 3.2, def: 6, spd: 6, sight: 6, speed: 'normal', wanders: true,  leash: 4, undead: true, passDoors: true },
+		guardian: { tier: 4, element: 'frost', hp: 19.1, atk: 3.8, def: 6, spd: 5, sight: 4, speed: 'normal', wanders: false, leash: 2, boss: true },
 	},
 
 	// A placeholder table of cumulative XP for each level (index 0 is level 1). The server passes
@@ -170,6 +180,20 @@ class Dice {
 }
 
 const clampNumber = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+// The damage multiplier for a hit of element `attacker` on something of element `defender`:
+// 1 + bonus, 1 - bonus or 1. Order matters: Fire hitting Frost is 1.25, Frost hitting Fire is 0.75.
+// Light hitting Dark is 1.25; Dark hitting Light is 1 (Light has no downside). Anything else,
+// including neutral or a missing element, is 1. Gear and spells call this; it draws no dice.
+function dungeonElementMultiplier(content, attacker, defender) {
+	const { loop, bonus, light, dark } = content.elements;
+	if (attacker == light && defender == dark) return 1 + bonus;
+	const a = loop.indexOf(attacker), d = loop.indexOf(defender);
+	if (a < 0 || d < 0) return 1;
+	if (d == (a + 1) % loop.length) return 1 + bonus;
+	if (a == (d + 1) % loop.length) return 1 - bonus;
+	return 1;
+}
 
 // The hero's stats for a class at a level.
 function dungeonHeroStats(content, cls, level) {
@@ -466,6 +490,7 @@ class DungeonGame {
 			const s = dungeonMonsterStats(content, t.species, level);
 			const m = {
 				id: t.id, species: t.species, spec: content.monsters[t.species], level,
+				element: content.monsters[t.species].element ?? 'neutral',
 				...s, hp: s.maxHp, cell: t.cell, home: t.cell,
 				xp: dungeonMonsterXp(content, t.species, level),
 				state: 'idle', target: null, lastDir: null, frozen: 0, searchLeft: 0, runLeft: 0,
