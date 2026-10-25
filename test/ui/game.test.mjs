@@ -910,3 +910,29 @@ test('scroll strip: swipes never act on it, and in swipes-only style its taps ar
 	assert.deepStrictEqual(await actions(page), []);
 	await page.close();
 });
+
+test('map walls are at least 3px thick, in both the normal and high contrast looks', async () => {
+	const { page, errors } = await openDemo('', gameScript(3, 3, 19, 4));
+	// Walls were 1px black lines, too thin to see against the grey of unexplored cells.
+	// Explore every cell so the map draws all its walls, doors and plain doors.
+	const widths = async () => page.evaluate(() => {
+		for (const cell of game.maze.cellList) cell.play.visited = true;
+		game.mazehtml.renderMap();
+		const found = new Set();
+		for (const cell of document.querySelectorAll('.mapCell')) {
+			const style = getComputedStyle(cell);
+			for (const side of ['Top', 'Right', 'Bottom', 'Left']) {
+				if (style[`border${side}Style`] !== 'none') found.add(parseFloat(style[`border${side}Width`]));
+			}
+		}
+		return [...found].sort((a, b) => a - b);
+	});
+	for (const on of [false, true]) {
+		await page.evaluate(on => game.mazehtml.setHighContrast(on), on);
+		const found = await widths();
+		assert.ok(found.length > 0, `the map draws walls (high contrast ${on})`);
+		assert.ok(found[0] >= 3, `every wall, door and key door is 3px or more (high contrast ${on}): ${found}`);
+	}
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});

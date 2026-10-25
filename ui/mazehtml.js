@@ -8,26 +8,26 @@ const walls = [
 	{'color':'#C0C0C0','img':''},
 ];
 const doors = [
-	{'map':'1px black solid', 'wall':'gray', 'img':''},
-	{'map':'2px brown solid', 'wall':'brown', 'img':''},
-	{'map':'2px red solid', 'key':'red', 'wall':'red', 'img':''},
-	{'map':'2px orange solid', 'key':'orange', 'wall':'orange', 'img':''},
-	{'map':'2px yellow solid', 'key':'yellow', 'wall':'yellow', 'img':''},
-	{'map':'2px green solid', 'key':'green', 'wall':'green', 'img':''},
-	{'map':'2px darkblue solid', 'key':'darkblue', 'wall':'darkblue', 'img':''},
-	{'map':'2px purple solid', 'key':'purple', 'wall':'purple', 'img':''},
-	{'map':'2px pink solid', 'key':'pink', 'wall':'pink', 'img':''},
-	{'map':'2px aqua solid', 'key':'aqua', 'wall':'aqua', 'img':''},
-	{'map':'2px springgreen solid', 'key':'springgreen', 'wall':'springgreen', 'img':''},
-	{'map':'2px red solid', 'key':'red', 'wall':'red', 'img':''},
-	{'map':'2px orange solid', 'key':'orange', 'wall':'orange', 'img':''},
-	{'map':'2px yellow solid', 'key':'yellow', 'wall':'yellow', 'img':''},
-	{'map':'2px green solid', 'key':'green', 'wall':'green', 'img':''},
-	{'map':'2px darkblue solid', 'key':'darkblue', 'wall':'darkblue', 'img':''},
-	{'map':'2px purple solid', 'key':'purple', 'wall':'purple', 'img':''},
-	{'map':'2px pink solid', 'key':'pink', 'wall':'pink', 'img':''},
-	{'map':'2px aqua solid', 'key':'aqua', 'wall':'aqua', 'img':''},
-	{'map':'2px springgreen solid', 'key':'springgreen', 'wall':'springgreen', 'img':''},
+	{'map':'3px black solid', 'wall':'gray', 'img':''},
+	{'map':'3px brown solid', 'wall':'brown', 'img':''},
+	{'map':'3px red solid', 'key':'red', 'wall':'red', 'img':''},
+	{'map':'3px orange solid', 'key':'orange', 'wall':'orange', 'img':''},
+	{'map':'3px yellow solid', 'key':'yellow', 'wall':'yellow', 'img':''},
+	{'map':'3px green solid', 'key':'green', 'wall':'green', 'img':''},
+	{'map':'3px darkblue solid', 'key':'darkblue', 'wall':'darkblue', 'img':''},
+	{'map':'3px purple solid', 'key':'purple', 'wall':'purple', 'img':''},
+	{'map':'3px pink solid', 'key':'pink', 'wall':'pink', 'img':''},
+	{'map':'3px aqua solid', 'key':'aqua', 'wall':'aqua', 'img':''},
+	{'map':'3px springgreen solid', 'key':'springgreen', 'wall':'springgreen', 'img':''},
+	{'map':'3px red solid', 'key':'red', 'wall':'red', 'img':''},
+	{'map':'3px orange solid', 'key':'orange', 'wall':'orange', 'img':''},
+	{'map':'3px yellow solid', 'key':'yellow', 'wall':'yellow', 'img':''},
+	{'map':'3px green solid', 'key':'green', 'wall':'green', 'img':''},
+	{'map':'3px darkblue solid', 'key':'darkblue', 'wall':'darkblue', 'img':''},
+	{'map':'3px purple solid', 'key':'purple', 'wall':'purple', 'img':''},
+	{'map':'3px pink solid', 'key':'pink', 'wall':'pink', 'img':''},
+	{'map':'3px aqua solid', 'key':'aqua', 'wall':'aqua', 'img':''},
+	{'map':'3px springgreen solid', 'key':'springgreen', 'wall':'springgreen', 'img':''},
 ];
 
 const wallRotate = { 'E': '-90deg', 'W': '90deg', 'N': '0deg', 'S':  '180deg'};
@@ -599,10 +599,10 @@ class MazeHtml{
 					break;
 				case 0:
 				case 1:
-					color = openValue ? 'transparent none' : (this.highContrast ? (wallValue ? '3px #FFFFFF dashed' : '2px #FFFFFF solid') : doors[wallValue].map);
+					color = openValue ? 'transparent none' : (this.highContrast ? (wallValue ? '3px #FFFFFF dashed' : '3px #FFFFFF solid') : doors[wallValue].map);
 					break;
 				default:					
-					color = openValue ? 'transparent none' : (this.keyList ? `${this.highContrast ? 3 : 2}px ${this.highContrast ? this.keyList[wallValue].hcColor : this.keyList[wallValue].doorcolor} solid` : doors[wallValue].map);
+					color = openValue ? 'transparent none' : (this.keyList ? `${this.highContrast ? 4 : 3}px ${this.highContrast ? this.keyList[wallValue].hcColor : this.keyList[wallValue].doorcolor} solid` : doors[wallValue].map);
 					break;
 			}			
 			// Update the wall on the map.
