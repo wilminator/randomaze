@@ -1,6 +1,6 @@
 # Thicker map walls
 
-- **Pull request:** #
+- **Pull request:** #38
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code
 
