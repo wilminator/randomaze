@@ -148,5 +148,5 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
 .highContrast .ladder_D::after {content: "\25BC";}
 
 /* The map: black cells with white walls, so the colored doors stand out. */
-.highContrast .floorMapContent {color: #FFFFFF;}
+.highContrast .floorMapContent, .darkMap .floorMapContent {color: #FFFFFF;}
 .highContrast .touchNav {background-color: #000000B0; border-color: #FFFF00; color: #FFFF00;}
