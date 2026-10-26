@@ -936,3 +936,47 @@ test('map walls are at least 3px thick, in both the normal and high contrast loo
 	assert.deepStrictEqual(errors, []);
 	await page.close();
 });
+
+test('dark map option draws the map black and white without turning on high contrast', async () => {
+	const { page, errors } = await openDemo('', gameScript(3, 3, 19, 4));
+	const look = () => page.evaluate(() => {
+		const explored = game.maze.cellList.find(cell => cell.play.visited).map;
+		const unexplored = game.maze.cellList.find(cell => !cell.play.visited)?.map;
+		const wall = ['Top', 'Right', 'Bottom', 'Left']
+			.map(side => getComputedStyle(explored[0])[`border${side}Color`]).find(c => c !== 'rgba(0, 0, 0, 0)');
+		return {explored: explored.css('background-color'), unexplored: unexplored ? unexplored.css('background-color') : null, wall,
+			darkClass: document.documentElement.classList.contains('darkMap'),
+			highContrastClass: document.documentElement.classList.contains('highContrast')};
+	});
+	const light = await look();
+	assert.strictEqual(light.explored, 'rgb(255, 255, 255)');
+	assert.strictEqual(light.unexplored, 'rgb(128, 128, 128)');
+	await page.evaluate(() => game.mazehtml.setDarkMap(true));
+	const dark = await look();
+	assert.strictEqual(dark.explored, 'rgb(0, 0, 0)', 'explored cells are black');
+	assert.strictEqual(dark.unexplored, 'rgb(68, 68, 68)', 'unexplored cells are dark grey');
+	assert.strictEqual(dark.wall, 'rgb(255, 255, 255)', 'walls are white');
+	assert.deepStrictEqual([dark.darkClass, dark.highContrastClass], [true, false], 'only the map changes');
+	// Doors keep their colors and stay solid: only walls turn white.
+	const doors = await page.evaluate(() => {
+		for (const cell of game.maze.cellList) cell.play.visited = true;
+		game.mazehtml.renderMap();
+		const sides = [];
+		for (const cell of document.querySelectorAll('.mapCell')) {
+			const style = getComputedStyle(cell);
+			for (const side of ['Top', 'Right', 'Bottom', 'Left']) {
+				if (style[`border${side}Style`] !== 'none') sides.push([style[`border${side}Style`], style[`border${side}Color`]]);
+			}
+		}
+		return sides;
+	});
+	assert.ok(doors.every(([style]) => style === 'solid'), 'no dashed lines');
+	assert.ok(doors.some(([, color]) => color === 'rgb(255, 0, 0)'), 'a keyed door keeps its color');
+	assert.ok(doors.some(([, color]) => color === 'rgb(165, 42, 42)'), 'a plain door keeps its brown');
+	await page.evaluate(() => game.mazehtml.setDarkMap(false));
+	const back = await look();
+	assert.strictEqual(back.explored, light.explored, 'turning it off brings the light map back');
+	assert.strictEqual(back.darkClass, false);
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});

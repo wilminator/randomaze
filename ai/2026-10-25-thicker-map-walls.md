@@ -1,4 +1,4 @@
-# Thicker map walls
+# Thicker map walls and a dark map option
 
 - **Pull request:** #38
 - **Author:** Claude Code, working for Mike (@wilminator)
@@ -16,6 +16,12 @@ white wall 3px. Only the border widths in `ui/mazehtml.js` changed (the `doors` 
 "unexplored" from "wall" but not the wall itself, and adds a background image per cell) and a
 lighter or darker unexplored grey (trades away contrast elsewhere). Plain thicker lines add no
 textured layers, which matters because phones are near their graphics memory limit.
+
+Mike liked the dark look (black explored cells, white walls, dark grey unexplored cells) that high
+contrast already gives the map, so it is now its own option: `mazehtml.setDarkMap(true)`. It
+changes only the map. Walls turn white; doors keep their colors and stay solid (high contrast
+still swaps them for its own colors and dashes). `mapIsDark()` is true for either option.
+The site gets a Settings checkbox in a separate randomaze-site PR after an engine release.
 
 ## What the AI did
 

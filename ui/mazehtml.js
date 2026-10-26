@@ -407,6 +407,9 @@ class MazeHtml{
 		this.scrollSide = 'right';
 		// Whether the maze is drawn in solid contrasting colors instead of pictures. Change it with setHighContrast().
 		this.highContrast = false;
+		// Whether the map alone is drawn dark: black explored cells, white walls, dark grey unexplored cells.
+		// High contrast also does this. Change it with setDarkMap().
+		this.darkMap = false;
 		// This engine needs a script tag in the root html page.
 		// Find it. Assert if it can't be found.
 		this.styleSheet =  [...document.styleSheets].filter((x)=>x.href==null).pop();
@@ -599,7 +602,7 @@ class MazeHtml{
 					break;
 				case 0:
 				case 1:
-					color = openValue ? 'transparent none' : (this.highContrast ? (wallValue ? '3px #FFFFFF dashed' : '3px #FFFFFF solid') : doors[wallValue].map);
+					color = openValue ? 'transparent none' : (wallValue ? (this.highContrast ? '3px #FFFFFF dashed' : doors[wallValue].map) : (this.mapIsDark() ? '3px #FFFFFF solid' : doors[wallValue].map));
 					break;
 				default:					
 					color = openValue ? 'transparent none' : (this.keyList ? `${this.highContrast ? 4 : 3}px ${this.highContrast ? this.keyList[wallValue].hcColor : this.keyList[wallValue].doorcolor} solid` : doors[wallValue].map);
@@ -650,7 +653,7 @@ class MazeHtml{
 	
 	renderMapCell(cell) {
 		if (this._debug || cell.play.visited) {
-			cell.map.html('&nbsp;').css('background-color', this.highContrast ? 'black' : 'white').addClass('mapCell');
+			cell.map.html('&nbsp;').css('background-color', this.mapIsDark() ? 'black' : 'white').addClass('mapCell');
 			for (const dir of ['N','S','E','W','U','D']) {
 				this.renderMapWall(cell, dir);
 				const nextCell = this.maze.getNextCell(cell, dir);
@@ -664,7 +667,7 @@ class MazeHtml{
 			}
 		}
 		else {
-			cell.map.html('&nbsp;').css({'background-color': this.highContrast ? '#444444' : 'gray', 'border':'2px transparent none'}).removeClass().addClass('mapCell');
+			cell.map.html('&nbsp;').css({'background-color': this.mapIsDark() ? '#444444' : 'gray', 'border':'2px transparent none'}).removeClass().addClass('mapCell');
 		}
 	}
 	
@@ -883,6 +886,25 @@ class MazeHtml{
 	setHighContrast(on) {
 		this.highContrast = !!on;
 		document.documentElement.classList.toggle('highContrast', this.highContrast);
+		if (this.maze && this.maze.cellList.every(cell => cell.map)) {
+			this.renderMap();
+		}
+	}
+
+	// True when the map is drawn dark: by its own option or because high contrast is on.
+	mapIsDark() {
+		return this.highContrast || this.darkMap;
+	}
+
+	/*
+	Draw only the map dark: black explored cells with white walls on dark grey unexplored cells. Doors keep their colors.
+	Walls show up more clearly than on the light map. Turned on by setHighContrast() too, which
+	also changes the maze itself. Sets the class `darkMap` on the page for the stylesheet, and
+	draws the map again because it picks its colors in script.
+	*/
+	setDarkMap(on) {
+		this.darkMap = !!on;
+		document.documentElement.classList.toggle('darkMap', this.darkMap);
 		if (this.maze && this.maze.cellList.every(cell => cell.map)) {
 			this.renderMap();
 		}
@@ -1723,4 +1745,4 @@ PgDn Descend<br />
 			this.helpFxn(state);
 		}
 	}
-}
+}
