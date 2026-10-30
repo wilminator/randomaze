@@ -1,6 +1,6 @@
 # Thinner Up/Down buttons, bump feedback and a Comfort option
 
-- **Pull request:** #
+- **Pull request:** #39
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code
 
