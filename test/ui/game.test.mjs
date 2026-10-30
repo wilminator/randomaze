@@ -982,6 +982,212 @@ test('dark map option draws the map black and white without turning on high cont
 });
 
 /*
+Up and Down are thin bands so Forward is the big target. On a cell with no ladder up or down the
+hidden band joins Forward: the box grows over it and a touch there lands on Forward.
+*/
+test('Up and Down are thin, and without a ladder Forward takes over their band', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4), { hasTouch: true, viewport: iPadSizes.portrait });
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+	const boxes = () => page.evaluate(() => {
+		const nav = document.getElementById('touchNav');
+		const rect = id => document.getElementById(id).getBoundingClientRect();
+		const up = rect('touchUp'), down = rect('touchDown'), fwd = rect('touchFwd');
+		const at = r => document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2).id;
+		return {
+			navHeight: nav.getBoundingClientRect().height, up: up.height, down: down.height, fwd: fwd.height,
+			noUp: nav.classList.contains('noUp'), noDown: nav.classList.contains('noDown'),
+			canUp: game.mazehtml.player.canAct('U'), canDown: game.mazehtml.player.canAct('D'),
+			atUp: at(up), atDown: at(down),
+		};
+	});
+	const start = await boxes();
+	assert.deepStrictEqual([start.noUp, start.noDown], [!start.canUp, !start.canDown], 'the classes follow the rules');
+	assert.ok(start.noUp && start.noDown, 'the start cell of this maze has no ladder');
+	assert.ok(start.fwd >= 0.84 * start.navHeight, 'Forward covers both empty bands');
+	assert.deepStrictEqual([start.atUp, start.atDown], ['touchFwd', 'touchFwd'], 'a touch on an empty band lands on Forward');
+	// The sizes on a cell with ladders both ways.
+	await page.evaluate(() => document.getElementById('touchNav').classList.remove('noUp', 'noDown'));
+	const ladder = await boxes();
+	assert.ok(ladder.up <= 0.16 * ladder.navHeight && ladder.down <= 0.16 * ladder.navHeight, 'Up and Down are thin');
+	assert.ok(ladder.fwd >= 3 * ladder.up, 'Forward is the big target');
+	assert.deepStrictEqual([ladder.atUp, ladder.atDown], ['touchUp', 'touchDown'], 'with a ladder the bands are Up and Down again');
+	await page.close();
+});
+
+// Press a key long enough for the game to see it (it looks ten times a second), then wait `after` ms.
+async function tap(page, key, after = 300) {
+	await page.keyboard.down(key);
+	await page.waitForTimeout(150);
+	await page.keyboard.up(key);
+	if (after) await page.waitForTimeout(after);
+}
+
+// Counts each time the view starts a bump (the class `bump` goes on).
+async function countBumps(page) {
+	await page.evaluate(() => {
+		window.bumps = 0;
+		const view = document.querySelector('#maze .viewport');
+		let had = false;
+		new MutationObserver(() => {
+			const has = view.classList.contains('bump');
+			if (has && !had) ++window.bumps;
+			had = has;
+		}).observe(view, { attributes: true, attributeFilter: ['class'] });
+	});
+	return () => page.evaluate(() => window.bumps);
+}
+
+test('a press that would do nothing bumps once, costs no move, and can be turned off', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4));
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+	const bumps = await countBumps(page);
+	// The way in is shut, so Back does nothing here.
+	assert.strictEqual(await page.evaluate(() => game.mazehtml.player.canAct('B')), false);
+	await page.keyboard.down('ArrowDown');
+	await page.waitForTimeout(150);
+	const animation = await page.evaluate(() => getComputedStyle(document.querySelector('#maze .viewport')).animationName);
+	assert.strictEqual(animation, 'mazeBump', 'the view shakes');
+	await page.waitForTimeout(450);
+	assert.strictEqual(await bumps(), 1, 'a held key bumps once, not over and over');
+	await page.keyboard.up('ArrowDown');
+	await tap(page, 'ArrowDown');
+	assert.strictEqual(await bumps(), 2, 'pressing again bumps again');
+	assert.strictEqual(await page.evaluate(() => game.mazehtml.player.moves), 0, 'a bump costs no move');
+	await page.evaluate(() => game.mazehtml.setBumpFeedback(false));
+	await tap(page, 'ArrowDown');
+	assert.strictEqual(await bumps(), 2, 'turned off, nothing bumps');
+	await page.close();
+});
+
+test('a clear swipe that the rules refuse bumps; a crooked one does not', async () => {
+	const page = await swipeGame({ style: 'swipes' });
+	const bumps = await countBumps(page);
+	await page.evaluate(() => window.blocked.add('U'));
+	await swipe(page, 'touchLeft', 0, -FAR);
+	assert.strictEqual(await bumps(), 1, 'a blocked climb bumps');
+	// Let that bump finish before the next.
+	await page.waitForTimeout(300);
+	await swipe(page, 'touchLeft', 0, -FAR);
+	assert.strictEqual(await bumps(), 2, 'each blocked swipe bumps');
+	await swipe(page, 'touchFwd', FAR, FAR);
+	assert.strictEqual(await bumps(), 2, 'a crooked swipe is not read, so it does not bump');
+	await page.close();
+});
+
+test('Comfort darkens the edges, fades turns, flashes instead of shaking, and keeps the pace', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4));
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+	const layer = () => page.evaluate(() => {
+		const el = document.querySelector('#maze .comfortLayer');
+		const style = getComputedStyle(el);
+		return { image: style.backgroundImage, turning: el.classList.contains('comfortTurn'),
+			animation: style.animationName, duration: style.animationDuration, events: style.pointerEvents };
+	});
+	assert.strictEqual((await layer()).image, 'none', 'off by default: no dark edges');
+	assert.strictEqual((await layer()).events, 'none', 'the layer never catches a touch');
+	await tap(page, 'ArrowLeft', 0);
+	assert.strictEqual((await layer()).turning, false, 'without Comfort a turn sweeps as before');
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+
+	await page.evaluate(() => game.mazehtml.setComfort(true));
+	assert.ok(await page.evaluate(() => document.documentElement.classList.contains('mazeComfort')));
+	assert.match((await layer()).image, /radial-gradient/, 'dark edges');
+	// Turn back the other way, to face the way in again.
+	await tap(page, 'ArrowRight', 0);
+	const turning = await layer();
+	assert.ok(turning.turning, 'the turn fades through dark');
+	assert.deepStrictEqual([turning.animation, turning.duration], ['mazeComfortTurn', '0.5s'], 'as long as the turn itself');
+	const turnTime = await page.evaluate(() => getComputedStyle(document.getElementById('mazeRotate')).transitionDuration);
+	assert.strictEqual(turnTime, '0.5s', 'the turn takes as long as ever');
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+
+	// A bump with Comfort on: no shake, the edges flash. Facing the way it started, Back is shut.
+	assert.strictEqual(await page.evaluate(() => game.mazehtml.player.canAct('B')), false);
+	await tap(page, 'ArrowDown', 0);
+	const bump = await page.evaluate(() => ({
+		view: getComputedStyle(document.querySelector('#maze .viewport')).animationName,
+		layer: getComputedStyle(document.querySelector('#maze .comfortLayer')).animationName,
+	}));
+	assert.deepStrictEqual(bump, { view: 'none', layer: 'mazeBumpFlash' });
+
+	await page.evaluate(() => game.mazehtml.setComfort(false));
+	assert.strictEqual((await layer()).image, 'none', 'turning it off takes the edges away');
+	await page.close();
+});
+
+test('Comfort climbs a ladder without the dip, in the same time', async () => {
+	const climb = async comfort => {
+		const { page } = await openDemo('', gameScript(1, 2, 4));
+		await page.waitForFunction(() => !game.mazehtml.isBusy());
+		const transition = await page.evaluate(async comfort => {
+			const { mazehtml } = game;
+			mazehtml.setComfort(comfort);
+			// Let the rules allow a climb here, and watch the transition the game sets for it.
+			const player = mazehtml.player;
+			const realAct = player.act.bind(player);
+			player.act = action => action == 'U' ? { type: 'move' } : realAct(action);
+			document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+			// The game looks at the keys ten times a second, so hold it for a couple of looks.
+			await new Promise(r => setTimeout(r, 250));
+			document.body.dispatchEvent(new KeyboardEvent('keyup', { key: 'PageUp', bubbles: true }));
+			return document.getElementById('mazeTranslate').style.transition;
+		}, comfort);
+		await page.close();
+		return transition;
+	};
+	const usual = await climb(false);
+	const comfortable = await climb(true);
+	assert.match(usual, /cubic-bezier\(0\.36, 0, 0\.66, -0\.56\)/, 'the usual climb dips first');
+	assert.match(comfortable, /ease-in-out/, 'Comfort climbs smoothly');
+	assert.ok(usual.includes('1500ms') && comfortable.includes('1500ms'), 'both take the same time');
+});
+
+test('letter keys: W A S D walk and turn, R and F climb, never with Ctrl, and they can be turned off', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4));
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+	// Spy on the rules: which action does each key ask for?
+	await page.evaluate(() => {
+		window.log = [];
+		game.mazehtml.player.act = action => { window.log.push(action); return null; };
+	});
+	const asked = async (key, options = {}) => {
+		await page.evaluate(() => { window.log = []; });
+		await page.evaluate(([key, options]) => document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...options })), [key, options]);
+		await page.waitForTimeout(250);
+		await page.evaluate(([key, options]) => document.body.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, ...options })), [key, options]);
+		await page.waitForTimeout(150);
+		return [...new Set(await page.evaluate(() => window.log))];
+	};
+	for (const [key, action] of [['w', 'F'], ['s', 'B'], ['a', 'L'], ['d', 'R'], ['r', 'U'], ['f', 'D'], ['W', 'F'], ['ArrowUp', 'F'], ['PageUp', 'U']]) {
+		assert.deepStrictEqual(await asked(key), [action], `${key} asks for ${action}`);
+	}
+	assert.deepStrictEqual(await asked('w', { ctrlKey: true }), [], 'Ctrl+W is the browser\'s');
+	assert.deepStrictEqual(await asked('r', { metaKey: true }), [], 'Cmd+R is the browser\'s');
+	await page.evaluate(() => game.mazehtml.setLetterKeys(false));
+	assert.deepStrictEqual(await asked('w'), [], 'turned off, a letter does nothing');
+	assert.deepStrictEqual(await asked('ArrowUp'), ['F'], 'the arrows still work');
+	await page.close();
+});
+
+test('letting go of a letter key stops the walk', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4));
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+	await page.evaluate(() => {
+		window.log = [];
+		game.mazehtml.player.act = action => { window.log.push(action); return null; };
+	});
+	await page.keyboard.down('a');
+	await page.waitForTimeout(350);
+	await page.keyboard.up('a');
+	await page.waitForTimeout(150);
+	const held = await page.evaluate(() => window.log.length);
+	assert.ok(held >= 2, `held, it kept asking (${held})`);
+	await page.waitForTimeout(400);
+	assert.strictEqual(await page.evaluate(() => window.log.length), held, 'let go, it stopped');
+	await page.close();
+});
+
+/*
 Game layer hooks (generator/gamelayer.js): playGame takes options so a game with its own rules can use this view.
 The page below plays a normal maze but routes every action through its own function, which is what a game layer does.
 */

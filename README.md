@@ -24,8 +24,8 @@ Open `demo/index.html` in a browser. No build step and no server needed.
 
 Add `?type=2&seed=1234` to the address to pick a maze size (0 to 3) and a seed, and `&doors=10`
 to add 10 plain (keyless) doors.
-Arrow keys walk and turn, Up opens a door you have the key for, and
-Page Up / Page Down climb ladders.
+Arrow keys (or W A S D) walk and turn, Up opens a door you have the key for, and
+Page Up / Page Down (or R / F) climb ladders.
 
 ## What's here
 

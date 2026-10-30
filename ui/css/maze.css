@@ -78,16 +78,43 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
 #maze.touchOn #touchNav { display: block;}
 #maze.touchOn.touchVisible #touchNav { opacity: 1;}
 .touchNav {position:absolute; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;background-color: #FFFFFF10; color: white; font:5vmin BarcadeBrawl; text-align: center; justify-content: center; display: flex; align-items: center;border: 0.5vmin white solid;}
-#touchFwd { width: 50%; left: 25%; top: 25%; height: 40%;}
+/* Forward is the big target. Up and Down are thin bands above and below it, there only for ladders. */
+#touchFwd { width: 50%; left: 25%; top: 15%; height: 55%;}
 #touchBack { width: 90%; left: 5%; top: 85%; height: 15%;}
 #touchLeft { width: 20%; left: 5%; top: 20%; height: 60%; writing-mode:vertical-lr; transform: rotate(180deg);}
 #touchRight { width: 20%; left: 75%; top: 20%; height: 60%; writing-mode:vertical-lr;}
-#touchUp { width: 50%; left: 25%; top: 0%; height: 25%;}
-#touchDown { width: 50%; left: 25%; top: 65%; height: 20%;}
+#touchUp { width: 50%; left: 25%; top: 0%; height: 15%;}
+#touchDown { width: 50%; left: 25%; top: 70%; height: 15%;}
 /* A button whose move would do nothing is not drawn, but still catches the tap. */
 .touchNav.touchBlocked { opacity: 0;}
+/* Without a ladder up (class noUp) or down (noDown), Forward grows over the empty band, and the
+   hidden Up or Down box lets touches through to it, so a tap there walks forward. */
+#touchNav.noUp #touchFwd { top: 0%; height: 70%;}
+#touchNav.noDown #touchFwd { height: 70%;}
+#touchNav.noUp.noDown #touchFwd { height: 85%;}
+#touchNav.noUp #touchUp, #touchNav.noDown #touchDown { pointer-events: none;}
 #touchHide { width: 20%; left: 0%; top: 0%; height: 15%; font-size: 3vmin}
 #touchShow { width: 20%; left: 0%; top: 0%; height: 15%; font-size: 3vmin; opacity:20%; display: none; z-index: 1;}
+
+/* A layer over the maze and under the touch buttons for the Comfort option and bump feedback
+   (see setComfort() and setBumpFeedback()). It never catches a touch. */
+.comfortLayer { position: absolute; width: 100%; height: 100%; pointer-events: none;}
+/* Comfort: dark edges keep the eye on the middle, which eases motion sickness... */
+.mazeComfort .comfortLayer { background-image: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.75) 100%);}
+/* ...and a turn fades through dark instead of sweeping the whole view past. It lasts as long as the turn. */
+.comfortLayer.comfortTurn { animation: mazeComfortTurn calc(0.5s * var(--maze-slow, 1)) linear;}
+@keyframes mazeComfortTurn { 0% {background-color: transparent;} 35%, 65% {background-color: rgba(0, 0, 0, 0.9);} 100% {background-color: transparent;}}
+/* Bump: a press that would do nothing gives the view a small shake. With Comfort on, or when the
+   device asks for less motion, the edges flash instead, so nothing moves. */
+.viewport.bump { animation: mazeBump 0.25s linear;}
+@keyframes mazeBump { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-1vmin);} 75% {transform: translateX(1vmin);}}
+.mazeComfort .viewport.bump { animation: none;}
+.mazeComfort .viewport.bump .comfortLayer { animation: mazeBumpFlash 0.25s linear;}
+@keyframes mazeBumpFlash { 0%, 100% {box-shadow: none;} 50% {box-shadow: inset 0 0 6vmin rgba(255, 255, 255, 0.6);}}
+@media (prefers-reduced-motion: reduce) {
+	.viewport.bump { animation: none;}
+	.viewport.bump .comfortLayer { animation: mazeBumpFlash 0.25s linear;}
+}
 #maze.touchOn #touchShow { display: flex;}
 #maze.touchOn.touchVisible #touchShow { display: none;}
 

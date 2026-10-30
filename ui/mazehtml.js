@@ -358,6 +358,9 @@ function visibleCells(maze, floor, row, column, range) {
 
 // Which game action each key (or touch button, see playGame) stands for.
 const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D'};
+// Letter keys, for keyboards without Page Up and Page Down (most laptops) and players who like
+// WASD: each stands for the key above that does the same thing. R climbs up and F climbs down.
+const letterKeys = {'w':'ArrowUp', 's':'ArrowDown', 'a':'ArrowLeft', 'd':'ArrowRight', 'r':'PageUp', 'f':'PageDown'};
 
 class MazeHtml{
 	constructor(seed, maze) {
@@ -410,6 +413,12 @@ class MazeHtml{
 		// Whether the map alone is drawn dark: black explored cells, white walls, dark grey unexplored cells.
 		// High contrast also does this. Change it with setDarkMap().
 		this.darkMap = false;
+		// The Comfort option for players who get motion sick (see setComfort()). Off unless the page turns it on.
+		this.comfort = false;
+		// Whether a press that would do nothing gives a small bump (see setBumpFeedback()).
+		this.bumpFeedback = true;
+		// Whether W A S D, R and F work as well as the arrows and Page Up/Down (see setLetterKeys()).
+		this.letterKeys = true;
 		// This engine needs a script tag in the root html page.
 		// Find it. Assert if it can't be found.
 		this.styleSheet =  [...document.styleSheets].filter((x)=>x.href==null).pop();
@@ -910,6 +919,30 @@ class MazeHtml{
 		}
 	}
 
+	/*
+	The Comfort option, for players who feel motion sick: dark edges around the view, turns that
+	fade through dark instead of sweeping the picture past, and ladder climbs without the dip
+	before the rise. Every animation keeps its length, so the pace of the game, which the server
+	checks, does not change. Sets the class `mazeComfort` on the page for the stylesheet.
+	Can change while playing.
+	*/
+	setComfort(on) {
+		this.comfort = !!on;
+		document.documentElement.classList.toggle('mazeComfort', this.comfort);
+	}
+
+	// Bump feedback: a press that would do nothing (a wall, a locked door, no ladder) gives the
+	// view a small shake, or an edge flash with Comfort on. It costs no move. On unless turned off.
+	setBumpFeedback(on) {
+		this.bumpFeedback = !!on;
+	}
+
+	// Letter keys: W A S D walk and turn, R climbs up, F climbs down, alongside the arrows and
+	// Page Up/Down. On unless turned off, for a page that needs those letters for something else.
+	setLetterKeys(on) {
+		this.letterKeys = !!on;
+	}
+
 	generateGameUi(rootNodeId, helpFxn = null) {
 		this.rootNode = $(`#${rootNodeId}`);
 		const gameUi = $(`
@@ -919,6 +952,7 @@ class MazeHtml{
 		  <div id="mazeTranslate" class="mazeTranslate">
 		  </div>
 		</div>
+	  <div class="comfortLayer"></div>
 	  <div class="touchNav" id="touchShow">Show</div>	  
 		<div id="touchNav">
 		  <div class="touchNav" id="touchFwd">Forward</div>
@@ -1222,8 +1256,11 @@ PgDn Descend<br />
 					case 'animationStop':				
 						endAnimation = true;
 						break;
-					case 'keydown':
 					case 'keyup':
+						// Let go, so the next press that bumps shows it again.
+						bumped = false;
+						break;
+					case 'keydown':
 					default:
 						break;
 				}
@@ -1248,6 +1285,30 @@ PgDn Descend<br />
 			for (const [id, action] of Object.entries(touchButtonActions)) {
 				$(`#${id}`).toggleClass('touchBlocked', !canAct(action));
 			}
+			// With no ladder, Forward takes over the empty Up or Down band (see ui/css/maze.css).
+			$('#touchNav').toggleClass('noUp', !player.canAct('U')).toggleClass('noDown', !player.canAct('D'));
+		}
+
+		// Run the CSS animation that hangs on `cls` for `duration` ms, starting it again if it ran a
+		// moment ago: taking the class off and reading the size makes the browser forget the last run.
+		const animationTimers = {};
+		function restartAnimation(element, cls, duration) {
+			clearTimeout(animationTimers[cls]);
+			element.removeClass(cls);
+			void element[0].offsetWidth;
+			element.addClass(cls);
+			animationTimers[cls] = setTimeout(() => element.removeClass(cls), duration);
+		}
+
+		// Bump feedback (see setBumpFeedback). A held key bumps once; letting go of it, or a
+		// press that works, lets the next one show.
+		let bumped = false;
+		function bump() {
+			if (!localThis.bumpFeedback || bumped) {
+				return;
+			}
+			bumped = true;
+			restartAnimation(mazeElement.find('.viewport'), 'bump', 250);
 		}
 
 		function processKeyPress(key) {
@@ -1260,8 +1321,10 @@ PgDn Descend<br />
 			// The rules decide what this key does. null means a bump, which costs nothing.
 			const result = doAction(action, Date.now() - startTime);
 			if (!result) {
+				bump();
 				return true; // May process more actions
 			}
+			bumped = false;
 			// A key picked up here is shown once the animation ends.
 			pendingKey = result.pickedUp || null;
 			if (options.onAction) {
@@ -1310,6 +1373,10 @@ PgDn Descend<br />
 				case 'turn':
 					pDir = player.dir;
 					pDeg += action == 'L' ? -90 : 90;
+					// Comfort: the turn fades through dark (see ui/css/maze.css).
+					if (localThis.comfort) {
+						restartAnimation(mazeElement.find('.comfortLayer'), 'comfortTurn', 500 * mazehtmlui.slowFactor);
+					}
 					// Update the GUI
 					mazeRotateElement.css('transform',`rotateY(${pDeg}deg) translate(-50%,-50%)`);
 					mazehtmlui.setItemHtmlRotation(pDeg);
@@ -1324,7 +1391,9 @@ PgDn Descend<br />
 				// Update the UI
 				const lift = action == 'U' ? 100 : -100;
 				animationState = action == 'U' ? 'up' : 'down';
-				mazeTranslateElement.css({'transition':`transform cubic-bezier(0.36, 0, 0.66, -0.56) ${ms(1500)}`,'transform':`translate3d(${-100*pX}vmin, ${lift}vmin, ${-100*pY}vmin)`});
+				// The climb dips before it rises; Comfort leaves the dip out.
+				const climb = localThis.comfort ? 'ease-in-out' : 'cubic-bezier(0.36, 0, 0.66, -0.56)';
+				mazeTranslateElement.css({'transition':`transform ${climb} ${ms(1500)}`,'transform':`translate3d(${-100*pX}vmin, ${lift}vmin, ${-100*pY}vmin)`});
 				// Play ladder sound
 				playSound(localThis.getClip('ladder'));
 				return false; // action in progress
@@ -1560,12 +1629,25 @@ PgDn Descend<br />
 		// This is handled now in the open functions.
 		//$('.door').filter(':not(.door_a)').on('transitionend', stopPropagation);
 
+		// The key name the game works with: a letter key becomes the arrow or Page key it stands for.
+		// With Ctrl, Alt or Cmd held it is left alone, because Ctrl+W, Ctrl+R and the like belong
+		// to the browser. Lower case, so Shift and Caps Lock make no difference.
+		function gameKey(event) {
+			const letter = localThis.letterKeys && !event.ctrlKey && !event.altKey && !event.metaKey
+				&& typeof event.key == 'string' && letterKeys[event.key.toLowerCase()];
+			return letter || event.key;
+		}
 		$('body').on('keydown.game', function(event) {
-			keyPressed[event.key] = true;
+			keyPressed[gameKey(event)] = true;
 			eventQueue.push('keydown');
 		}).on('keyup.game', function(event) {
-			if (keyPressed[event.key]) {
-				delete keyPressed[event.key];
+			// A letter is let go however it is read now, in case the letter setting changed while it was held.
+			const key = gameKey(event);
+			const letter = typeof event.key == 'string' && letterKeys[event.key.toLowerCase()];
+			for (const name of [key, event.key, letter]) {
+				if (name && keyPressed[name]) {
+					delete keyPressed[name];
+				}
 			}
 			eventQueue.push('keyup');
 		}).on('transitionend.game', function (event) {
@@ -1746,6 +1828,10 @@ PgDn Descend<br />
 					if (key && canAct(keyActions[key])) {
 						finger.pressed = key;
 						pressButton(key);
+					} else if (key) {
+						// A clear swipe the rules refuse is a new try, so it bumps.
+						bumped = false;
+						bump();
 					}
 				}
 			}
