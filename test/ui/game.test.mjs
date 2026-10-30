@@ -1186,3 +1186,85 @@ test('letting go of a letter key stops the walk', async () => {
 	assert.strictEqual(await page.evaluate(() => window.log.length), held, 'let go, it stopped');
 	await page.close();
 });
+
+/*
+Game layer hooks (generator/gamelayer.js): playGame takes options so a game with its own rules can use this view.
+The page below plays a normal maze but routes every action through its own function, which is what a game layer does.
+*/
+function hookScript(extra = '') {
+	return gameScript(1, 5, 2).replace('mazehtml.playGame();', `
+		window.log = { acts: [], actions: [], settled: 0 };
+		const player = new MazePlayer(maze);
+		window.player = player;
+		mazehtml.playGame(null, null, {
+			player,
+			act: (action, time) => { log.acts.push(action); return player.act(action, time); },
+			canAct: (action) => player.canAct(action) && action != 'D',
+			onAction: (action, result) => log.actions.push(action + ':' + result.type),
+			onSettled: () => ++log.settled,
+		});
+		${extra}
+	`);
+}
+
+test('playGame routes actions through the options the game gave, and reports each one', async () => {
+	const { page, errors } = await openDemo('', hookScript());
+	// Hold the key until the game has acted, then let go: one turn.
+	await page.keyboard.down('ArrowLeft');
+	await page.waitForFunction(() => log.acts.length >= 1);
+	await page.keyboard.up('ArrowLeft');
+	await page.waitForFunction(() => log.settled >= 1);
+	assert.deepStrictEqual(await page.evaluate(() => log.acts), ['L']);
+	assert.deepStrictEqual(await page.evaluate(() => log.actions), ['L:turn']);
+	assert.strictEqual(await page.evaluate(() => player.actions), 'L', 'the player we passed in is the one that played');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('a bump reaches the game but is not an action: nothing is reported', async () => {
+	const { page } = await openDemo('', hookScript());
+	// The player starts at an entrance facing into the maze, so Back (out of the entrance) is refused by the rules.
+	await page.keyboard.down('ArrowDown');
+	await page.waitForTimeout(300);
+	await page.keyboard.up('ArrowDown');
+	assert.deepStrictEqual(await page.evaluate(() => log.actions), []);
+	await page.close();
+});
+
+test('syncPlayer snaps the view to where the game moved the player', async () => {
+	const { page, errors } = await openDemo('', hookScript());
+	const before = await page.evaluate(() => document.getElementById('mazeTranslate').style.transform);
+	// The game moves the player itself (a teleport), then tells the view.
+	await page.evaluate(() => {
+		const here = game.maze.grid[player.z][player.y][player.x];
+		const target = ['N', 'S', 'E', 'W'].map(d => game.maze.getNextCell(here, d)).find(c => c && c.loc[0] == player.z);
+		player.moveTo(target, 'S');
+		game.mazehtml.syncPlayer();
+	});
+	const after = await page.evaluate(() => ({ t: document.getElementById('mazeTranslate').style.transform, x: player.x, y: player.y, r: document.getElementById('mazeRotate').style.transform }));
+	assert.notStrictEqual(after.t, before, 'the view moved');
+	assert.ok(after.t.includes(`translate3d(${-100 * after.x}vmin, 0vmin, ${-100 * after.y}vmin)`), after.t);
+	assert.match(after.r, /rotateY\((180|-180)deg\)/);
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('syncPlayer during an animation waits for it to end, then snaps', async () => {
+	const { page } = await openDemo('', hookScript());
+	await page.keyboard.down('ArrowLeft');
+	await page.waitForFunction(() => log.acts.length >= 1);
+	await page.keyboard.up('ArrowLeft');
+	// Mid-turn: ask for a sync after the game changed the player's facing.
+	await page.evaluate(() => { player.dir = 'N'; game.mazehtml.syncPlayer(); });
+	await page.waitForFunction(() => log.settled >= 1);
+	const rotation = await page.evaluate(() => document.getElementById('mazeRotate').style.transform);
+	assert.match(rotation, /rotateY\(0deg\)/);
+	await page.close();
+});
+
+test('the touch buttons ask the game\'s canAct, so a game can hide a button', async () => {
+	const { page } = await openDemo('', hookScript(), { hasTouch: true });
+	// canAct above refuses D, so the Down button is blocked (hidden) whatever the maze says.
+	assert.ok(await page.locator('#touchDown.touchBlocked').count() > 0);
+	await page.close();
+});
