@@ -892,6 +892,9 @@ for (const style of ['taps', 'both']) {
 		// The other strip: touches are kept from scrolling, and a vertical swipe climbs.
 		assert.strictEqual(await touchAt(page, 'touchLeft', 'touchstart'), true, 'the other strip stops the page scrolling');
 		await touchAt(page, 'touchLeft', 'touchend');
+		// That tap turns left at the game's next look (ten a second). Wait for it, or on a slow
+		// machine it lands after the log is cleared and is read as part of the swipe below.
+		await page.waitForFunction(() => window.log.includes('L'));
 		await page.evaluate(() => { window.log = []; });
 		if (style == 'both') {
 			await swipe(page, 'touchLeft', 0, -FAR);
