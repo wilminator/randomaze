@@ -1,6 +1,6 @@
 # Hooks so the first-person view can show a game layer
 
-- **Pull request:** #TBD
+- **Pull request:** #40
 - **Author:** Claude Code, working for Mike (@wilminator)
 - **AI tool(s):** Claude Code (Sonnet 5.5)
 
