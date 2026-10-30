@@ -20,7 +20,8 @@ jobs:
 
   # Opens the demo in headless Chromium and checks the UI.
   ui:
-    runs-on: ubuntu-latest
+    # Pinned: Playwright 1.56 cannot install Chromium on the ubuntu-latest image (Ubuntu 26.04).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
