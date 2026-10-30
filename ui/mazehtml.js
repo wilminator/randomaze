@@ -358,6 +358,9 @@ function visibleCells(maze, floor, row, column, range) {
 
 // Which game action each key (or touch button, see playGame) stands for.
 const keyActions = {'ArrowUp':'F', 'ArrowDown':'B', 'ArrowLeft':'L', 'ArrowRight':'R', 'PageUp':'U', 'PageDown':'D'};
+// Letter keys, for keyboards without Page Up and Page Down (most laptops) and players who like
+// WASD: each stands for the key above that does the same thing. R climbs up and F climbs down.
+const letterKeys = {'w':'ArrowUp', 's':'ArrowDown', 'a':'ArrowLeft', 'd':'ArrowRight', 'r':'PageUp', 'f':'PageDown'};
 
 class MazeHtml{
 	constructor(seed, maze) {
@@ -414,6 +417,8 @@ class MazeHtml{
 		this.comfort = false;
 		// Whether a press that would do nothing gives a small bump (see setBumpFeedback()).
 		this.bumpFeedback = true;
+		// Whether W A S D, R and F work as well as the arrows and Page Up/Down (see setLetterKeys()).
+		this.letterKeys = true;
 		// This engine needs a script tag in the root html page.
 		// Find it. Assert if it can't be found.
 		this.styleSheet =  [...document.styleSheets].filter((x)=>x.href==null).pop();
@@ -930,6 +935,12 @@ class MazeHtml{
 	// view a small shake, or an edge flash with Comfort on. It costs no move. On unless turned off.
 	setBumpFeedback(on) {
 		this.bumpFeedback = !!on;
+	}
+
+	// Letter keys: W A S D walk and turn, R climbs up, F climbs down, alongside the arrows and
+	// Page Up/Down. On unless turned off, for a page that needs those letters for something else.
+	setLetterKeys(on) {
+		this.letterKeys = !!on;
 	}
 
 	generateGameUi(rootNodeId, helpFxn = null) {
@@ -1539,12 +1550,25 @@ PgDn Descend<br />
 		// This is handled now in the open functions.
 		//$('.door').filter(':not(.door_a)').on('transitionend', stopPropagation);
 
+		// The key name the game works with: a letter key becomes the arrow or Page key it stands for.
+		// With Ctrl, Alt or Cmd held it is left alone, because Ctrl+W, Ctrl+R and the like belong
+		// to the browser. Lower case, so Shift and Caps Lock make no difference.
+		function gameKey(event) {
+			const letter = localThis.letterKeys && !event.ctrlKey && !event.altKey && !event.metaKey
+				&& typeof event.key == 'string' && letterKeys[event.key.toLowerCase()];
+			return letter || event.key;
+		}
 		$('body').on('keydown.game', function(event) {
-			keyPressed[event.key] = true;
+			keyPressed[gameKey(event)] = true;
 			eventQueue.push('keydown');
 		}).on('keyup.game', function(event) {
-			if (keyPressed[event.key]) {
-				delete keyPressed[event.key];
+			// A letter is let go however it is read now, in case the letter setting changed while it was held.
+			const key = gameKey(event);
+			const letter = typeof event.key == 'string' && letterKeys[event.key.toLowerCase()];
+			for (const name of [key, event.key, letter]) {
+				if (name && keyPressed[name]) {
+					delete keyPressed[name];
+				}
 			}
 			eventQueue.push('keyup');
 		}).on('transitionend.game', function (event) {

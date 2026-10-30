@@ -1,4 +1,4 @@
-# Thinner Up/Down buttons, bump feedback and a Comfort option
+# Thinner Up/Down buttons, bump feedback, a Comfort option and letter keys
 
 - **Pull request:** #39
 - **Author:** Claude Code, working for Mike (@wilminator)
@@ -22,6 +22,11 @@ without his input; the choices made are listed in the project's decision log).
   its length, because the server checks the pace of a game. A device set to reduce motion also
   gets the flash instead of the shake.
 
+- **Letter keys**, `setLetterKeys(on)`, on by default. W A S D walk and turn and R / F climb, as
+  well as the arrows and Page Up / Page Down, because most laptops (every MacBook) have no Page
+  keys. A letter is turned into the key it stands for as it arrives, so the rest of the game is
+  unchanged. With Ctrl, Alt or Cmd held the letter is left to the browser (Ctrl+W, Ctrl+R).
+
 ## What the AI did
 
 Claude Code planned the change and wrote all of the code, the browser tests and this note.
@@ -36,4 +41,6 @@ waiting for him.
 - The sizes are a guess made without an iPad; they are one CSS block in ui/css/maze.css.
 - Forward taking over an empty Up band means a tap near the top of the screen walks forward on a
   cell without a ladder. That seemed better than a dead zone, but it is a choice.
+- A game built on the engine that wants W (or another of these letters) for its own action
+  must call `setLetterKeys(false)` or pick other letters.
 - The turn fade covers most of the turn, so the sweep is mostly hidden rather than removed.

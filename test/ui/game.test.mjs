@@ -1141,3 +1141,48 @@ test('Comfort climbs a ladder without the dip, in the same time', async () => {
 	assert.match(comfortable, /ease-in-out/, 'Comfort climbs smoothly');
 	assert.ok(usual.includes('1500ms') && comfortable.includes('1500ms'), 'both take the same time');
 });
+
+test('letter keys: W A S D walk and turn, R and F climb, never with Ctrl, and they can be turned off', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4));
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+	// Spy on the rules: which action does each key ask for?
+	await page.evaluate(() => {
+		window.log = [];
+		game.mazehtml.player.act = action => { window.log.push(action); return null; };
+	});
+	const asked = async (key, options = {}) => {
+		await page.evaluate(() => { window.log = []; });
+		await page.evaluate(([key, options]) => document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...options })), [key, options]);
+		await page.waitForTimeout(250);
+		await page.evaluate(([key, options]) => document.body.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, ...options })), [key, options]);
+		await page.waitForTimeout(150);
+		return [...new Set(await page.evaluate(() => window.log))];
+	};
+	for (const [key, action] of [['w', 'F'], ['s', 'B'], ['a', 'L'], ['d', 'R'], ['r', 'U'], ['f', 'D'], ['W', 'F'], ['ArrowUp', 'F'], ['PageUp', 'U']]) {
+		assert.deepStrictEqual(await asked(key), [action], `${key} asks for ${action}`);
+	}
+	assert.deepStrictEqual(await asked('w', { ctrlKey: true }), [], 'Ctrl+W is the browser\'s');
+	assert.deepStrictEqual(await asked('r', { metaKey: true }), [], 'Cmd+R is the browser\'s');
+	await page.evaluate(() => game.mazehtml.setLetterKeys(false));
+	assert.deepStrictEqual(await asked('w'), [], 'turned off, a letter does nothing');
+	assert.deepStrictEqual(await asked('ArrowUp'), ['F'], 'the arrows still work');
+	await page.close();
+});
+
+test('letting go of a letter key stops the walk', async () => {
+	const { page } = await openDemo('', gameScript(1, 2, 4));
+	await page.waitForFunction(() => !game.mazehtml.isBusy());
+	await page.evaluate(() => {
+		window.log = [];
+		game.mazehtml.player.act = action => { window.log.push(action); return null; };
+	});
+	await page.keyboard.down('a');
+	await page.waitForTimeout(350);
+	await page.keyboard.up('a');
+	await page.waitForTimeout(150);
+	const held = await page.evaluate(() => window.log.length);
+	assert.ok(held >= 2, `held, it kept asking (${held})`);
+	await page.waitForTimeout(400);
+	assert.strictEqual(await page.evaluate(() => window.log.length), held, 'let go, it stopped');
+	await page.close();
+});
