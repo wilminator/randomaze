@@ -1001,7 +1001,22 @@ PgDn Descend<br />
 		document.documentElement.style.setProperty('--maze-slow', String(this.slowFactor));
 	}
 
-	playGame(winFunc = null, loseFunc = null) {
+	/*
+	Starts the game on this maze. winFunc and loseFunc are kept for the page's own use.
+
+	options lets a game with its own rules (see generator/gamelayer.js) use this first-person view
+	without the view knowing anything about those rules. All of them are optional; with none, this is the classic game.
+		player            An object with MazePlayer's interface (x, y, z, dir, moves, actions, times, canAct, act)
+		                  to play instead of a new MazePlayer. A game layer passes its own game's player.
+		act(action, time) Does one action and answers what MazePlayer.act answers ({type, ...} or null for a bump).
+		                  A game layer routes the action through its own rules here (a fight may refuse a step).
+		canAct(action)    Whether the action would do something now; decides which touch buttons show.
+		onAction(action, result)  Called when an action is accepted, before its animation starts.
+		onSettled()       Called each time the view is standing still again after an action.
+	While playing, mazehtml.syncPlayer() snaps the view to where the player now is. A game calls it after it moves the
+	player itself (a flee, a teleport), which no action of this view animated.
+	*/
+	playGame(winFunc = null, loseFunc = null, options = {}) {
 		const mapElement=$('#map');
 		const mazeElement=$('#maze');
 		const mazeTranslateElement=$('#mazeTranslate');
@@ -1124,8 +1139,11 @@ PgDn Descend<br />
 		var mayProcessAction = true;
 		var alertTimeout = null;
 		// The game's rules: where the player is, keys held, moves made.
-		const player = new MazePlayer(maze, gameDebug);
+		const player = options.player ?? new MazePlayer(maze, gameDebug);
 		this.player = player;
+		// What a game layer may replace: how an action is done, and whether it would do anything.
+		const canAct = options.canAct ?? (action => player.canAct(action));
+		const doAction = options.act ?? ((action, time) => player.act(action, time));
 		// True while an action is animating and the next key press has to wait.
 		this.isBusy = () => !!animationState || !mayProcessAction;
 		// A key picked up by the last action, shown when its animation ends.
@@ -1228,7 +1246,7 @@ PgDn Descend<br />
 		const touchButtonActions = { touchFwd: 'F', touchBack: 'B', touchUp: 'U', touchDown: 'D' };
 		function updateTouchButtons() {
 			for (const [id, action] of Object.entries(touchButtonActions)) {
-				$(`#${id}`).toggleClass('touchBlocked', !player.canAct(action));
+				$(`#${id}`).toggleClass('touchBlocked', !canAct(action));
 			}
 		}
 
@@ -1240,12 +1258,21 @@ PgDn Descend<br />
 			// Get the current cell.
 			const cell = maze.grid[pZ][pY][pX];
 			// The rules decide what this key does. null means a bump, which costs nothing.
-			const result = player.act(action, Date.now() - startTime);
+			const result = doAction(action, Date.now() - startTime);
 			if (!result) {
 				return true; // May process more actions
 			}
 			// A key picked up here is shown once the animation ends.
 			pendingKey = result.pickedUp || null;
+			if (options.onAction) {
+				options.onAction(action, result);
+			}
+			if (result.type == 'fall' && result.via == 'step') {
+				// Stepping onto an unseen pit moves the player and drops them a floor in one action; there is no
+				// animation for that, so show where they ended up.
+				syncPlayer();
+				return true;
+			}
 			switch (result.type) {
 				case 'trap':
 					// And the walls come tumbling down!
@@ -1449,8 +1476,60 @@ PgDn Descend<br />
 					processKeyPress(key);
 				}				
 			}
+			if (!animationState) {
+				if (syncPending) {
+					syncPlayer();
+				}
+				if (options.onSettled) {
+					options.onSettled();
+				}
+			}
 			return !animationState;
 		}
+
+		// Snaps the view to the player's position, direction and floor, with no animation. A game layer calls this
+		// (as mazehtml.syncPlayer()) after it moves the player itself. While an animation runs it waits for the end.
+		var syncPending = false;
+		function syncPlayer() {
+			if (animationState) {
+				syncPending = true;
+				return;
+			}
+			syncPending = false;
+			const floorChanged = player.z != pZ;
+			const previous = maze.grid[pZ][pY][pX];
+			pX = player.x;
+			pY = player.y;
+			pZ = player.z;
+			pDir = player.dir;
+			// Turn the short way round: keep pDeg within half a turn of the direction's own angle.
+			const target = { 'E': 90, 'W': -90, 'N': 0, 'S': 180 }[pDir];
+			pDeg = target + 360 * Math.round((pDeg - target) / 360);
+			mazeTranslateElement.css('transition', 'none');
+			mazeRotateElement.css('transition', 'none');
+			if (floorChanged) {
+				mapElement.empty().prepend(mapHtml[pZ]);
+				mazeTranslateElement.empty().prepend(mazeHtml[pZ]);
+			}
+			mazeTranslateElement.css('transform', `translate3d(${-100*pX}vmin, 0vmin, ${-100*pY}vmin)`);
+			mazeRotateElement.css('transform', `rotateY(${pDeg}deg) translate(-50%,-50%)`);
+			localThis.setItemHtmlRotation(pDeg);
+			hideOutOfRangeCells(pX, pY, pZ, viewRange, true);
+			// Let the browser apply the snap before the normal transitions come back.
+			mazeTranslateElement[0] && mazeTranslateElement[0].offsetWidth;
+			mazeTranslateElement.css('transition', '');
+			mazeRotateElement.css('transition', '');
+			const here = maze.grid[pZ][pY][pX];
+			here.play.visited = true;
+			if (!floorChanged) {
+				localThis.renderMapCursor(previous);
+			}
+			localThis.renderMapCell(here);
+			localThis.renderMapCursor(here, pDir);
+			updateTouchButtons();
+			$('#moves').text(`Moves: ${player.moves}`);
+		}
+		this.syncPlayer = syncPlayer;
 
 		// Initialize our starting cell.
 		maze.grid[pZ][pY][pX].play.visited = true;
@@ -1664,7 +1743,7 @@ PgDn Descend<br />
 					const key = swipeKey(finger, dx, dy);
 					finger.spent = true;
 					// Ask the rules whether this would do anything; if not, nothing happens.
-					if (key && player.canAct(keyActions[key])) {
+					if (key && canAct(keyActions[key])) {
 						finger.pressed = key;
 						pressButton(key);
 					}

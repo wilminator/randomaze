@@ -110,6 +110,9 @@ moved by the rules of the maze, and your rules can move it too with `game.moveTo
 how a teleporter works. `game.contents` holds what is in the maze (`spawn`, `remove`, `at`, `ofKind`),
 and `game.dice` is the seeded dice, drawn in the order actions happen.
 
+To show a game layer in the first-person view, pass its player and routing to `mazehtml.playGame(win, lose, {player, act, canAct, onAction, onSettled})`
+and call `mazehtml.syncPlayer()` after your rules move the player (see the comment above `playGame` in `ui/mazehtml.js`).
+
 `examples/monsterhunt.js` is a small, complete example: one monster to find and defeat, a trophy that
 appears when it dies, and two teleport pads. Read it first.
 
