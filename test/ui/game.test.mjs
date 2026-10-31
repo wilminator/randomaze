@@ -1273,6 +1273,58 @@ test('the touch buttons ask the game\'s canAct, so a game can hide a button', as
 });
 
 /*
+The win hook: a page can draw its own celebration. onWin gets the result and the #maze element
+once the walk out of the exit has finished. Answering false means the page did the banner and sound itself.
+*/
+async function winWithHook(hookBody) {
+	const { solve, load } = require('../../tools/check_mazes_lib.js');
+	const ctx = load(root);
+	const [type, seed] = [1, 202601015];
+	const [, maze] = vm.runInContext(`build(${type}, ${seed})`, ctx);
+	const script = gameScript(type, seed, 11).replace('mazehtml.playGame();',
+		`window.wins = [];
+		mazehtml.playGame(null, null, {onWin: info => { window.wins.push({moves: info.moves, cells: info.cells,
+			actions: info.actions, hasElement: info.element.attr('id') == 'maze'}); ${hookBody} }});`);
+	const { page, errors } = await openDemo('', script);
+	const won = await playKeys(page, solve(maze));
+	assert.strictEqual(won.won, true);
+	// The hook runs when the walk out of the exit ends, a moment after the player counts as won.
+	await page.waitForFunction(() => window.wins.length > 0);
+	const result = await page.evaluate(() => ({wins: window.wins,
+		banner: document.querySelectorAll('#maze .alertTop').length, custom: document.querySelectorAll('#maze .custom').length}));
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+	return { result, solution: won.actions };
+}
+
+test('the win hook is called once with the result, and replaces the plain win box', async () => {
+	const { result, solution } = await winWithHook(`info.element.append('<div class="custom"></div>');`);
+	assert.strictEqual(result.wins.length, 1);
+	assert.strictEqual(result.wins[0].actions, solution);
+	assert.strictEqual(result.wins[0].moves, solution.length);
+	assert.ok(result.wins[0].cells > 0);
+	assert.strictEqual(result.wins[0].hasElement, true);
+	assert.strictEqual(result.custom, 1, 'the page could draw over the maze');
+	assert.strictEqual(result.banner, 0, 'the plain box is only the default');
+});
+
+test('a win hook can call defaultOnWin to add to the plain win box', async () => {
+	const { result } = await winWithHook(`game.mazehtml.defaultOnWin(info);`);
+	assert.strictEqual(result.wins.length, 1);
+	assert.strictEqual(result.banner, 1);
+});
+
+test('with no win hook the plain win box shows', async () => {
+	const { solve, load } = require('../../tools/check_mazes_lib.js');
+	const [, maze] = vm.runInContext('build(1, 202601015)', load(root));
+	const { page, errors } = await openDemo('', gameScript(1, 202601015, 11));
+	await playKeys(page, solve(maze));
+	await page.waitForSelector('#maze .alertTop');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+/*
 Regression: a wrong entrance (a fake exit) drops a wall when the player walks out of it, but the
 map kept drawing an opening there. Stand at a fake exit, walk out, and read the map cell's border.
 */

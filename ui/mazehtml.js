@@ -1055,6 +1055,16 @@ PgDn Descend<br />
 	}
 
 	/*
+	The plain win notice, and what playGame uses when it is given no onWin hook: a box over the maze and the 'game_win'
+	clip. info is what onWin gets. A page's onWin can call this, or copy it and change it.
+	*/
+	defaultOnWin(info) {
+		const alert = $('<div>').addClass('alertTop textWindow').html('You have escaped the maze.<br />YOU WIN!!!');
+		info.element.append(alert);
+		setMusic(this.getClip('game_win'), false);
+	}
+
+	/*
 	Starts the game on this maze. winFunc and loseFunc are kept for the page's own use.
 
 	options lets a game with its own rules (see generator/gamelayer.js) use this first-person view
@@ -1066,6 +1076,11 @@ PgDn Descend<br />
 		canAct(action)    Whether the action would do something now; decides which touch buttons show.
 		onAction(action, result)  Called when an action is accepted, before its animation starts.
 		onSettled()       Called each time the view is standing still again after an action.
+		onWin(info)       Called once, when the player has walked out through the exit and the walk has finished. info is
+		                  {state, moves, cells, actions, times, element} where element is the jQuery-wrapped #maze the page
+		                  may draw over (fireworks, a banner). The page has 10 seconds before the game is cleared away.
+		                  With no hook the view calls its own defaultOnWin(info) (the plain "YOU WIN!!!" box and the
+		                  'game_win' clip). A hook replaces it; copy defaultOnWin to start your own, or call it to add to it.
 	While playing, mazehtml.syncPlayer() snaps the view to where the player now is. A game calls it after it moves the
 	player itself (a flee, a teleport), which no action of this view animated.
 	*/
@@ -1437,11 +1452,9 @@ PgDn Descend<br />
 			switch (animationState) {
 				case 'forward':
 					if (gameOver && gameOver.state == 'win') {
-						const alert = $('<div>').addClass('alertTop textWindow').html('You have escaped the maze.<br />YOU WIN!!!');
-						mazeElement.append(alert);
 						localThis.setGameOver(true);
-						const music = localThis.getClip('game_win'); //new Audio('audio/win.mp3');
-						setMusic(music, false);
+						// The page's own celebration, or the plain one below. Either has the 10 seconds.
+						(options.onWin ?? (info => localThis.defaultOnWin(info)))({...gameOver, element: mazeElement});
 						setTimeout(function(){localThis.removeGameUi(gameOver)}, 10000);
 						return;
 					}		
@@ -1933,4 +1946,4 @@ PgDn Descend<br />
 			this.helpFxn(state);
 		}
 	}
-}
+}
