@@ -1272,6 +1272,39 @@ test('the touch buttons ask the game\'s canAct, so a game can hide a button', as
 	await page.close();
 });
 
+/*
+Regression: a wrong entrance (a fake exit) drops a wall when the player walks out of it, but the
+map kept drawing an opening there. Stand at a fake exit, walk out, and read the map cell's border.
+*/
+test('the map draws the wall that falls at a fake exit', async () => {
+	const { page, errors } = await openDemo('', gameScript(3, 3, 4));
+	const prop = dir => ({ N: 'border-top-style', S: 'border-bottom-style', E: 'border-right-style', W: 'border-left-style' })[dir];
+	// Stand at a fake exit, facing out, and let the view follow.
+	const fake = await page.evaluate(() => {
+		const { maze, mazehtml } = window.game;
+		const exit = maze.entranceList[maze.entrances - 1];
+		const entrance = maze.entranceList.find(e => e.cell !== exit.cell);
+		const [z, y, x] = entrance.cell.loc;
+		const player = mazehtml.player;
+		player.z = z; player.y = y; player.x = x; player.dir = entrance.dir;
+		mazehtml.syncPlayer();
+		return { loc: entrance.cell.loc, dir: entrance.dir };
+	});
+	const style = () => page.evaluate(({ loc, p }) => {
+		const cell = window.game.maze.grid[loc[0]][loc[1]][loc[2]];
+		return cell.map.css(p);
+	}, { loc: fake.loc, p: prop(fake.dir) });
+	assert.notStrictEqual(await style(), 'solid', 'an unused fake exit is an opening');
+	await page.waitForTimeout(1500);
+	await page.keyboard.down('ArrowUp');
+	await page.waitForTimeout(300);
+	await page.keyboard.up('ArrowUp');
+	await page.waitForTimeout(2500);
+	assert.strictEqual(await style(), 'solid', 'the fallen wall is on the map');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
 test('the map marks the entrance the player started from, and only that one', async () => {
 	const { page, errors } = await openDemo('', gameScript(3, 3, 19, 4));
 	const markers = () => page.evaluate(() => {
