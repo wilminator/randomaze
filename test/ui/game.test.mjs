@@ -1323,3 +1323,73 @@ test('with no win hook the plain win box shows', async () => {
 	assert.deepStrictEqual(errors, []);
 	await page.close();
 });
+
+Regression: a wrong entrance (a fake exit) drops a wall when the player walks out of it, but the
+map kept drawing an opening there. Stand at a fake exit, walk out, and read the map cell's border.
+*/
+test('the map draws the wall that falls at a fake exit', async () => {
+	const { page, errors } = await openDemo('', gameScript(3, 3, 4));
+	const prop = dir => ({ N: 'border-top-style', S: 'border-bottom-style', E: 'border-right-style', W: 'border-left-style' })[dir];
+	// Stand at a fake exit, facing out, and let the view follow.
+	const fake = await page.evaluate(() => {
+		const { maze, mazehtml } = window.game;
+		const exit = maze.entranceList[maze.entrances - 1];
+		const entrance = maze.entranceList.find(e => e.cell !== exit.cell);
+		const [z, y, x] = entrance.cell.loc;
+		const player = mazehtml.player;
+		player.z = z; player.y = y; player.x = x; player.dir = entrance.dir;
+		mazehtml.syncPlayer();
+		return { loc: entrance.cell.loc, dir: entrance.dir };
+	});
+	const style = () => page.evaluate(({ loc, p }) => {
+		const cell = window.game.maze.grid[loc[0]][loc[1]][loc[2]];
+		return cell.map.css(p);
+	}, { loc: fake.loc, p: prop(fake.dir) });
+	assert.notStrictEqual(await style(), 'solid', 'an unused fake exit is an opening');
+	await page.waitForTimeout(1500);
+	await page.keyboard.down('ArrowUp');
+	await page.waitForTimeout(300);
+	await page.keyboard.up('ArrowUp');
+	await page.waitForTimeout(2500);
+	assert.strictEqual(await style(), 'solid', 'the fallen wall is on the map');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});
+
+test('the map marks the entrance the player started from, and only that one', async () => {
+	const { page, errors } = await openDemo('', gameScript(3, 3, 19, 4));
+	const markers = () => page.evaluate(() => {
+		const maze = game.maze, start = maze.entranceList[0];
+		const cells = [...document.querySelectorAll('.startMarker')];
+		const mine = game.mazehtml.entranceGrid[start.floor][start.dir][start.pos].get(0);
+		return {
+			count: cells.length,
+			// The marker sits in the border cell outside the start entrance.
+			onStart: cells[0] === mine,
+			title: cells[0]?.title,
+			entrances: maze.entranceList.length,
+			// An arrow icon class is on the marker, so it points into the maze.
+			arrow: /fa-arrow-/.test(cells[0]?.className ?? ''),
+			color: cells[0] && getComputedStyle(cells[0]).color,
+		};
+	});
+	let found = await markers();
+	assert.ok(found.entrances >= 2, 'the maze has more than one entrance, so a marker is needed');
+	assert.strictEqual(found.count, 1, 'exactly one entrance is marked');
+	assert.ok(found.onStart && found.arrow);
+	assert.strictEqual(found.title, 'Start');
+	assert.strictEqual(found.color, 'rgb(255, 212, 0)', 'bright on its dark square');
+	// Redrawing the map (it happens all the time) never adds a second marker, in any look.
+	for (const look of ['dark', 'highContrast', 'plain']) {
+		await page.evaluate(look => {
+			game.mazehtml.setDarkMap(look === 'dark');
+			game.mazehtml.setHighContrast(look === 'highContrast');
+			game.mazehtml.renderMap();
+		}, look);
+		found = await markers();
+		assert.strictEqual(found.count, 1, `one marker in the ${look} look`);
+		assert.ok(found.onStart);
+	}
+	assert.deepStrictEqual(errors, []);
+	await page.close();
+});

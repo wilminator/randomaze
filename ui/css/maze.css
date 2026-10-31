@@ -30,6 +30,9 @@ img.inventory {width:5vmin; height:5vmin; max-width: 100%;max-height: 5vmin; mar
 	line-height: 1;
 }
 
+/* The map border cell that marks where the player started (see renderStartMarker()). */
+.startMarker { background-color: #202020; color: #ffd400; text-align: center; }
+
 .mazeRotate { height:100%; width:100%; transition: transform calc(0.5s * var(--maze-slow, 1)); transform-style: preserve-3d; position: absolute}
 .mazeTranslate { height:100%; width:100%; transition: transform calc(0.5s * var(--maze-slow, 1)); transform-style: preserve-3d; position: absolute}
 .mazeFloor { height:100%; width:100%; transform-style: preserve-3d; position: absolute}

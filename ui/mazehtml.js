@@ -605,16 +605,19 @@ class MazeHtml{
 		const openValue = cell.play[dir];
 		if (dir in dirCss){
 			var color;
-			switch (wallValue) {
+			// A fake exit's wall fell behind the player. The maze data still says opening, so ask the play state.
+			const fallen = wallValue === null && cell.play.fallen && cell.play.fallen[dir];
+			const shown = fallen ? 0 : wallValue;
+			switch (shown) {
 				case null:
 					color = 'transparent none';
 					break;
 				case 0:
 				case 1:
-					color = openValue ? 'transparent none' : (wallValue ? (this.highContrast ? '3px #FFFFFF dashed' : doors[wallValue].map) : (this.mapIsDark() ? '3px #FFFFFF solid' : doors[wallValue].map));
+					color = openValue ? 'transparent none' : (shown ? (this.highContrast ? '3px #FFFFFF dashed' : doors[shown].map) : (this.mapIsDark() ? '3px #FFFFFF solid' : doors[shown].map));
 					break;
 				default:					
-					color = openValue ? 'transparent none' : (this.keyList ? `${this.highContrast ? 4 : 3}px ${this.highContrast ? this.keyList[wallValue].hcColor : this.keyList[wallValue].doorcolor} solid` : doors[wallValue].map);
+					color = openValue ? 'transparent none' : (this.keyList ? `${this.highContrast ? 4 : 3}px ${this.highContrast ? this.keyList[shown].hcColor : this.keyList[shown].doorcolor} solid` : doors[shown].map);
 					break;
 			}			
 			// Update the wall on the map.
@@ -691,7 +694,23 @@ class MazeHtml{
 				this.entranceGrid[ent.floor][ent.dir][ent.pos].css({'background-color':'#FFF'}).addClass(entranceClass[ent.dir]).text(parseInt(e)+1);
 			}
 		}
-		
+		else {
+			this.renderStartMarker();
+		}
+	}
+
+	/*
+	Mark the entrance the player started from. A maze can have several entrances (and fake exits),
+	and the map does not otherwise say which one is the start. entranceList[0] is always the start.
+	The marker is an arrow in the border cell outside that entrance, pointing into the maze.
+	The look (a bright arrow on a dark square) comes from the startMarker CSS class, which works on
+	both the normal and the dark map. Debug maps number every entrance instead (see renderMap()).
+	*/
+	renderStartMarker() {
+		const start = this.maze.entranceList[0];
+		if (!start) return;
+		this.entranceGrid[start.floor][start.dir][start.pos]
+			.addClass(`${entranceClass[start.dir]} startMarker`).attr('title', 'Start');
 	}
 
 	renderMapCursor(cell, dir = null) {
@@ -1353,6 +1372,10 @@ PgDn Descend<br />
 			}
 			switch (result.type) {
 				case 'trap':
+					// The map keeps the wall too, or it would still show an opening there.
+					cell.play.fallen = cell.play.fallen || {};
+					cell.play.fallen[pDir] = true;
+					localThis.renderMapCell(cell);
 					// And the walls come tumbling down!
 					const fauxWall = cell.html[pDir];
 					const wallCss = localThis.wallTile(pZ, pY, pX);
