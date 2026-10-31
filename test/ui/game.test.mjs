@@ -1324,6 +1324,7 @@ test('with no win hook the plain win box shows', async () => {
 	await page.close();
 });
 
+/*
 Regression: a wrong entrance (a fake exit) drops a wall when the player walks out of it, but the
 map kept drawing an opening there. Stand at a fake exit, walk out, and read the map cell's border.
 */
