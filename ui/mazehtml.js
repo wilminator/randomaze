@@ -691,7 +691,23 @@ class MazeHtml{
 				this.entranceGrid[ent.floor][ent.dir][ent.pos].css({'background-color':'#FFF'}).addClass(entranceClass[ent.dir]).text(parseInt(e)+1);
 			}
 		}
-		
+		else {
+			this.renderStartMarker();
+		}
+	}
+
+	/*
+	Mark the entrance the player started from. A maze can have several entrances (and fake exits),
+	and the map does not otherwise say which one is the start. entranceList[0] is always the start.
+	The marker is an arrow in the border cell outside that entrance, pointing into the maze.
+	The look (a bright arrow on a dark square) comes from the startMarker CSS class, which works on
+	both the normal and the dark map. Debug maps number every entrance instead (see renderMap()).
+	*/
+	renderStartMarker() {
+		const start = this.maze.entranceList[0];
+		if (!start) return;
+		this.entranceGrid[start.floor][start.dir][start.pos]
+			.addClass(`${entranceClass[start.dir]} startMarker`).attr('title', 'Start');
 	}
 
 	renderMapCursor(cell, dir = null) {
