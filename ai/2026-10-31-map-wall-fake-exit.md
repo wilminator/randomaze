@@ -1,6 +1,6 @@
 # Show the fallen wall on the map after a fake exit
 
-- **Pull request:** #TBD
+- **Pull request:** #43
 - **Author:** Mike (wilminator)
 - **AI tool(s):** Claude Code (Sonnet 5.5)
 
