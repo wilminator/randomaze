@@ -1297,7 +1297,7 @@ async function winWithHook(hookBody) {
 	return { result, solution: won.actions };
 }
 
-test('the win hook is called once with the result, and the plain win box stays unless it answers false', async () => {
+test('the win hook is called once with the result, and replaces the plain win box', async () => {
 	const { result, solution } = await winWithHook(`info.element.append('<div class="custom"></div>');`);
 	assert.strictEqual(result.wins.length, 1);
 	assert.strictEqual(result.wins[0].actions, solution);
@@ -1305,12 +1305,21 @@ test('the win hook is called once with the result, and the plain win box stays u
 	assert.ok(result.wins[0].cells > 0);
 	assert.strictEqual(result.wins[0].hasElement, true);
 	assert.strictEqual(result.custom, 1, 'the page could draw over the maze');
-	assert.strictEqual(result.banner, 1, 'no answer keeps the plain win box');
+	assert.strictEqual(result.banner, 0, 'the plain box is only the default');
 });
 
-test('a win hook that answers false replaces the plain win box', async () => {
-	const { result } = await winWithHook(`info.element.append('<div class="custom"></div>'); return false;`);
+test('a win hook can call defaultOnWin to add to the plain win box', async () => {
+	const { result } = await winWithHook(`game.mazehtml.defaultOnWin(info);`);
 	assert.strictEqual(result.wins.length, 1);
-	assert.strictEqual(result.custom, 1);
-	assert.strictEqual(result.banner, 0);
+	assert.strictEqual(result.banner, 1);
+});
+
+test('with no win hook the plain win box shows', async () => {
+	const { solve, load } = require('../../tools/check_mazes_lib.js');
+	const [, maze] = vm.runInContext('build(1, 202601015)', load(root));
+	const { page, errors } = await openDemo('', gameScript(1, 202601015, 11));
+	await playKeys(page, solve(maze));
+	await page.waitForSelector('#maze .alertTop');
+	assert.deepStrictEqual(errors, []);
+	await page.close();
 });
