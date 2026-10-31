@@ -1047,6 +1047,11 @@ PgDn Descend<br />
 		canAct(action)    Whether the action would do something now; decides which touch buttons show.
 		onAction(action, result)  Called when an action is accepted, before its animation starts.
 		onSettled()       Called each time the view is standing still again after an action.
+		onWin(info)       Called once, when the player has walked out through the exit and the walk has finished. info is
+		                  {state, moves, cells, actions, times, element} where element is the jQuery-wrapped #maze the page
+		                  may draw over (fireworks, a banner). The page has 10 seconds before the game is cleared away.
+		                  Answer false to say the page showed its own banner and sound; the view then skips its plain
+		                  "YOU WIN!!!" box and 'game_win' clip. Any other answer keeps them. No hook, no change.
 	While playing, mazehtml.syncPlayer() snaps the view to where the player now is. A game calls it after it moves the
 	player itself (a flee, a teleport), which no action of this view animated.
 	*/
@@ -1414,11 +1419,15 @@ PgDn Descend<br />
 			switch (animationState) {
 				case 'forward':
 					if (gameOver && gameOver.state == 'win') {
-						const alert = $('<div>').addClass('alertTop textWindow').html('You have escaped the maze.<br />YOU WIN!!!');
-						mazeElement.append(alert);
 						localThis.setGameOver(true);
-						const music = localThis.getClip('game_win'); //new Audio('audio/win.mp3');
-						setMusic(music, false);
+						// The page's own celebration. Answering false means it did the banner and the sound itself.
+						const celebrated = options.onWin ? options.onWin({...gameOver, element: mazeElement}) === false : false;
+						if (!celebrated) {
+							const alert = $('<div>').addClass('alertTop textWindow').html('You have escaped the maze.<br />YOU WIN!!!');
+							mazeElement.append(alert);
+							const music = localThis.getClip('game_win'); //new Audio('audio/win.mp3');
+							setMusic(music, false);
+						}
 						setTimeout(function(){localThis.removeGameUi(gameOver)}, 10000);
 						return;
 					}		
