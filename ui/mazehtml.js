@@ -707,7 +707,9 @@ class MazeHtml{
 	both the normal and the dark map. Debug maps number every entrance instead (see renderMap()).
 	*/
 	renderStartMarker() {
-		const start = this.maze.entranceList[0];
+		// A page may apply settings (setHighContrast draws the map) before maze.generateMaze() has made the
+		// entrances; the marker is drawn when playGame() draws the map again.
+		const start = this.maze.entranceList && this.maze.entranceList[0];
 		if (!start) return;
 		this.entranceGrid[start.floor][start.dir][start.pos]
 			.addClass(`${entranceClass[start.dir]} startMarker`).attr('title', 'Start');

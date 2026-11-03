@@ -81,6 +81,33 @@ test('the demo can play a large maze with many keys', async () => {
 	await page.close();
 });
 
+// The site (and the demo) apply the player's settings, including setHighContrast(), after the MazeHtml
+// exists but BEFORE maze.generateMaze() has made the entrances. The map's start-entrance marker used to
+// read entranceList[0] then and threw "Cannot read properties of undefined (reading '0')" on every start.
+test('settings applied before the maze is generated do not crash the map', async () => {
+	const script = `
+		const params = new MazeParameters(1, 5);
+		const maze = new Maze(params.mazeSeed, params.floors, params.columns, params.rows,
+			params.doorTypes, params.entrances, params.oneWayWalls);
+		const mazehtml = new MazeHtml(params.htmlSeed, maze);
+		mazehtml.loadWall({name: 'plain', css: 'background: gray;', tags: ['wall']});
+		mazehtml.loadDoor({css: 'background: brown;', tags: ['split']});
+		mazehtml.setHighContrast(false);
+		mazehtml.setHighContrast(true);
+		mazehtml.setHighContrast(false);
+		mazehtml.generateGameUi('gamewindow');
+		maze.generateMaze();
+		maze.generateDoors();
+		mazehtml.playGame();
+		window.game = {maze, mazehtml};
+	`;
+	const { page, errors } = await openDemo('', script);
+	assert.deepStrictEqual(errors, []);
+	// Once the maze exists, the start entrance is still marked.
+	assert.strictEqual(await page.locator('.startMarker').count(), 1);
+	await page.close();
+});
+
 test('a game with fewer key items than keys reuses items instead of crashing', async () => {
 	const { page, errors } = await openDemo('', gameScript(3, 3, 4));
 	assert.deepStrictEqual(errors, []);
