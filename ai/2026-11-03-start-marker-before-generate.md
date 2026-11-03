@@ -1,8 +1,8 @@
 # Fix the start-entrance marker crashing before the maze is generated
 
-- **Pull request:** #TBD (randomaze, branch `claude/project-thread-w5icvo`)
-- **Author:** Mike (project owner); written by Claude
-- **AI tool(s):** Claude Code (Claude Sonnet 5.5)
+- **Pull request:** #46
+- **Author:** Claude Code, working for Mike (@wilminator)
+- **AI tool(s):** Claude Code
 
 ## What and why
 
