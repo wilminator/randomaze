@@ -3,8 +3,18 @@ name: Tests
 
 on:
   pull_request:
+    # Notes and licence text cannot break the tests, so editing only them skips the run.
+    # (No branch rule requires this check, so a skipped run never blocks a merge.)
+    paths-ignore: ['ai/**', '*.md', 'LICENSE*']
   push:
     branches: [main]
+    paths-ignore: ['ai/**', '*.md', 'LICENSE*']
+
+# Saves runs: a newer push to the same pull request cancels the older, now stale, run.
+# Pushes to main are never cancelled (each merge keeps its own result).
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
